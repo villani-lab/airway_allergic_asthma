@@ -11,7 +11,7 @@ use_python("/home/nealpsmith/.conda/envs/sc_analysis/bin/python")
 First, we need to aggregate the matrices and assess the data quality.  Here we use Pegasus to create a count matrix and to
 calcluate some quality-control statistics (% mitochondrial UMIs, number of genes per cell).  From there, we can plot
 these statistics to determine the proper cutoffs to define the quality cells.  Based on the distributions, we chose to include
-cells with < 30% mitochondrial reads and > 500 genes
+cells with < 30% mitochondrial reads and > 500 genes. test.
 
 ```{python message=FALSE}
 import pegasus as pg
