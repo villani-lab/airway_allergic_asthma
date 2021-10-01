@@ -1,6 +1,6 @@
 ---
 title: "Figure 1"
-output: html_notebook
+output: rmarkdown::github_document
 ---
 
 ```{r message=FALSE}
