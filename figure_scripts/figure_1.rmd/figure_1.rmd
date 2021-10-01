@@ -1,0 +1,145 @@
+---
+title: "Figure 1"
+output: rmarkdown::github_document
+---
+
+```{r message=FALSE}
+library(reticulate)
+use_python("/home/nealpsmith/.conda/envs/sc_analysis/bin/python")
+```
+
+First, we need to aggregate the matrices and assess the data quality.  Here we use Pegasus to create a count matrix and to
+calcluate some quality-control statistics (% mitochondrial UMIs, number of genes per cell).  From there, we can plot
+these statistics to determine the proper cutoffs to define the quality cells.  Based on the distributions, we chose to include
+cells with < 30% mitochondrial reads and > 500 genes
+
+```{python message=FALSE}
+import pegasus as pg
+import scanpy as sc
+import pandas as pd
+import matplotlib.colors as clr
+import matplotlib.pyplot as plt
+import matplotlib as mpl
+
+# Set a colormap
+colormap = clr.LinearSegmentedColormap.from_list('gene_cmap', ["#d3d3d3" ,'#482cc7'], N=200)
+
+# Aggregate the matrices
+pg.aggregate_matrices(csv_file = "/home/nealpsmith/projects/medoff/cellranger/aggregate_matrix.csv",
+                      what_to_return = "/home/nealpsmith/projects/medoff/data/all_data.h5sc")
+
+all_data = pg.read_input("/home/nealpsmith/projects/medoff/data/all_data.h5sc")
+pg.qc_metrics(all_data, percent_mito = 30)
+
+# Plot the percent mito/n genes
+fig, ax = plt.subplots(1)
+x = all_data.obs["n_genes"]
+y = all_data.obs["percent_mito"]
+_ = ax.hexbin(x, y, mincnt=1, xscale = "log")
+_ = ax.set_xticks([10, 100, 1000])
+_ = ax.get_xaxis().set_major_formatter(mpl.ticker.ScalarFormatter())
+_ = ax.axvline(500, color="red")
+_ = ax.axhline(30, color="red")
+_ = plt.xlabel("Number of genes")
+_ = plt.ylabel("percent mitochondrial UMIs")
+
+```
+
+Next we log-normalized the data, selected highly variable features and performed PCA
+```{python process_data, message=FALSE, results = FALSE}
+pg.filter_data(all_data)
+pg.log_norm(all_data)
+pg.highly_variable_features(all_data, consider_batch = False)
+pg.pca(all_data)
+```
+
+To account for technical variability between samples, we used the Harmony algorithm to align the pricniple component scores.
+These adjust PCs were used for downstrseam leiden clustering and UMAP dimensionality reduction.  Once we have the data in UMAP space,
+we can look at our QC metrics, along with our basic leiden clustering.
+```{python harmonize}
+# pg.run_harmony(all_data, n_jobs = 5)
+# pg.neighbors(all_data, rep = "pca_harmony")
+# pg.diffmap(all_data, rep = "pca_harmony")
+# pg.leiden(all_data, rep = "pca_harmony")
+# pg.umap(all_data, rep = "pca_harmony")
+# pg.write_output("/home/nealpsmith/projects/medoff/data/all_data_harmonized.h5ad")
+
+# Read in the harmonized data
+harmonized_data = pg.read_input("/home/nealpsmith/projects/medoff/data/all_data_harmonized.h5ad")
+figure = sc.pl.umap(harmonized_data, color = ["n_genes", "percent_mito", "leiden_labels"],
+                    cmap = colormap, return_fig = True, show = False, ncols = 2)
+figure.set_size_inches(11, 11)
+figure
+```
+
+
+Now that the data is in UMAP space, we can use cannonical markers to try to define major lineages.
+```{python marker_genes}
+lin_genes = ["EPCAM", "CD8A", "IL7R", "LYZ", "MS4A1", "CPA3", "GNLY"]
+figure = sc.pl.umap(harmonized_data, color = lin_genes,
+           cmap = colormap, ncols = 3, return_fig = True, show = False,
+                    wspace = 0.2, hspace = 0.3)
+figure.set_size_inches(10, 7)
+
+```
+Using all of this info (along with other DEG info), we can assign the clusters to our major lineages.
+```{python lineage_umap}
+cell_clust_dict = {
+        "1" : "CD8 T cells",
+        "2" : "CD4 T cells",
+        "3" : "Epithelial",
+        "4" : "MPS",
+        "5" : "Epithelial",
+        "6" : "Epithelial",
+        "7" : "Epithelial",
+        "8" : "CD8 T and NK cells",
+        "9" : "Epithelial",
+        "10" : "MPS",
+        "11" : "B cells",
+        "12" : "CD8 T cells",
+        "13" : "MPS",
+        "14" : "MPS",
+        "15" : "CD8 T cells",
+        "16" : "Mast cells",
+        "17" : "Epithelial",
+        "18" : "Epithelial",
+        "19" : "Epithelial",
+        "20" : "Epithelial"
+    }
+harmonized_data.obs["cell_set"] = [cell_clust_dict[clust] for clust in harmonized_data.obs["leiden_labels"]]
+
+figure = sc.pl.umap(harmonized_data, color = "cell_set", return_fig = True, show = False, legend_loc = "on data")
+figure.set_size_inches(5, 5)
+figure
+
+```
+
+Looking at the major lineage markers in a dot plot, we can appreciate how specific they are for our new assignments.
+```{python dotplot}
+harmonized_data.obs["cell_set"] = pd.Categorical(harmonized_data.obs["cell_set"],
+                                                 categories = ["Epithelial", "CD8 T cells", "CD4 T cells",
+                                                               "MPS", "B cells", "Mast cells", "CD8 T and NK cells"])
+
+plot = sc.pl.dotplot(harmonized_data, lin_genes, groupby="cell_set",
+                     show=False, return_fig=True, title="lineage markers",
+                     cmap=colormap, standard_scale = "var")
+
+axes_dict = plot.get_axes()
+axes_dict["mainplot_ax"].set_axisbelow(True)
+axes_dict["mainplot_ax"].grid()
+_ = axes_dict["color_legend_ax"].set_title("scaled expression")
+figure = plt.gcf()
+figure.set_size_inches(8, 6)
+figure
+```
+
+Looking at the embedding density across UMAP space, we can see there are biases in what types of cells were recovered from different sample types.
+```{python embedding_density}
+harmonized_data.obs["pheno_tmpt"] = ["_".join([pheno, tmpt]) for pheno, tmpt in zip(harmonized_data.obs["phenotype"], harmonized_data.obs["sample"])]
+sc.tl.embedding_density(harmonized_data, basis = "umap", groupby = "pheno_tmpt", key_added = "pheno_tmpt_dens")
+figure = sc.pl.embedding_density(harmonized_data, basis = "umap", key = "pheno_tmpt_dens",
+                                 return_fig = True, show = False,
+                                 wspace = 0.2, hspace = 0.4, ncols = 3)
+figure.set_size_inches(10, 7)
+
+```
