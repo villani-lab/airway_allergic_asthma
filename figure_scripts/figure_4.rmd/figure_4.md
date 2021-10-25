@@ -1,22 +1,16 @@
----
-title: "Figure 4"
-output: rmarkdown::github_document
----
+Figure 4
+================
 
-```{r message=FALSE}
+``` r
 library(reticulate)
 use_python("/home/nealpsmith/.conda/envs/sc_analysis/bin/python")
 ```
 
 **For figure 4, we wanted to focus on differentially expressed genes between AA and AC in MPS clusters.**
 
-To perform differential expression analyses we used ```DESeq2``` on a pseudobulk count matrix where we summed the UMI
-counts across cells for each unique cluster/sample combination, creating a matrix of n genes x (n samples * n clusters).
-We used a simple model of ```gene ~ phenotype``` where phenotype was a factor with 2 levels indicating the phenotypical
-group the sample came from.  When we do this for all clusters, we can see that only a subset of them have a substantial
-number of DEGs.
+To perform differential expression analyses we used `DESeq2` on a pseudobulk count matrix where we summed the UMI counts across cells for each unique cluster/sample combination, creating a matrix of n genes x (n samples \* n clusters). We used a simple model of `gene ~ phenotype` where phenotype was a factor with 2 levels indicating the phenotypical group the sample came from. When we do this for all clusters, we can see that only a subset of them have a substantial number of DEGs.
 
-```{r deseq2_res, warning = FALSE, message = FALSE}
+``` r
 library(DESeq2)
 library(glue)
 library(tidyverse)
@@ -80,9 +74,11 @@ ggplot(plot_df, aes(x = cluster, y = value, group = variable, fill = variable)) 
   theme_bw(base_size = 20)
 ```
 
-In particular clusters 1 and 5 had the most differentially expressed genes.  We can visualize these in a volcano plot.
+![](figure_4_files/figure-markdown_github/deseq2_res-1.png)
 
-```{r volcano_plots, fig.width = 10, fig.height = 6}
+In particular clusters 1 and 5 had the most differentially expressed genes. We can visualize these in a volcano plot.
+
+``` r
 library(ggrepel)
 library(ggpubr)
 
@@ -129,14 +125,19 @@ plot_list <- lapply(c("cluster_1", "cluster_5"), function(clust){
   return(plot)
 })
 ggarrange(plotlist = plot_list, nrow = 1)
-
 ```
 
-Next, we went through the lists of DEGs to look for biological patterns among the genes.  We noticed many
-cytokines/chemokines as well as genes associated with metabolism differentially expressed at Ag.  Here, we can visualize
-this by creating heatmaps of the log-fc of particular genes in the clusters they are differentially expressed.
+    ## Warning: ggrepel: 23 unlabeled data points (too many overlaps). Consider
+    ## increasing max.overlaps
 
-```{r logfc_heatmaps,fig.width = 3, fig.height = 3}
+    ## Warning: ggrepel: 27 unlabeled data points (too many overlaps). Consider
+    ## increasing max.overlaps
+
+![](figure_4_files/figure-markdown_github/volcano_plots-1.png)
+
+Next, we went through the lists of DEGs to look for biological patterns among the genes. We noticed many cytokines/chemokines as well as genes associated with metabolism differentially expressed at Ag. Here, we can visualize this by creating heatmaps of the log-fc of particular genes in the clusters they are differentially expressed.
+
+``` r
 library(ComplexHeatmap)
 library(ggpubr)
 library(circlize)
@@ -231,14 +232,13 @@ for (gset in names(gene_lists)) {
                   })
   draw(hmap)
 }
-
 ```
 
-In addition to running DESeq2 and manually curating the results, we also ran Ingenuity Pathway Analysis (IPA) to try to
-contextualize the differential expression results.  In cluster 5, IPA suggested an up-regulation in AA of antigen
-processing and presentation genes. We can visualize some of these genes with violin plots compaing AA to AC at Ag.
+![](figure_4_files/figure-markdown_github/logfc_heatmaps-1.png)![](figure_4_files/figure-markdown_github/logfc_heatmaps-2.png)
 
-```{python violin_plots}
+In addition to running DESeq2 and manually curating the results, we also ran Ingenuity Pathway Analysis (IPA) to try to contextualize the differential expression results. In cluster 5, IPA suggested an up-regulation in AA of antigen processing and presentation genes. We can visualize some of these genes with violin plots compaing AA to AC at Ag.
+
+``` python
 import pegasus as pg
 import matplotlib.pyplot as plt
 import numpy as np
@@ -273,27 +273,43 @@ def plot_func(genes, cluster) :
 
 
 mps_harmonized = pg.read_input("/home/nealpsmith/projects/medoff/data/myeloid_harmonized.h5ad")
-mps_ag = mps_harmonized[mps_harmonized.obs["sample"] == "Ag"]
+```
 
+    ## 2021-10-25 19:19:15,763 - pegasus - INFO - Time spent on 'read_input' = 1.12s.
+
+``` python
+mps_ag = mps_harmonized[mps_harmonized.obs["sample"] == "Ag"]
+```
+
+    ## /home/nealpsmith/.conda/envs/sc_analysis/lib/python3.7/site-packages/pandas/core/arrays/categorical.py:2487: FutureWarning: The `inplace` parameter in pandas.Categorical.remove_unused_categories is deprecated and will be removed in a future version.
+    ##   res = method(*args, **kwargs)
+
+``` python
 plot_func(["CIITA", "HLA-DRB1", "CD1C"], "5")
 ```
 
+<img src="figure_4_files/figure-markdown_github/violin_plots-1.png" width="672" />
 
-In the opposite direction, IPA suggested a down-regulation in phagosome/lysosome genes in MPS cluster 5.  Here are some
-of those genes in violin plots.
+In the opposite direction, IPA suggested a down-regulation in phagosome/lysosome genes in MPS cluster 5. Here are some of those genes in violin plots.
 
-```{python phagolysosome}
+``` python
 plot_func(["MARCO", "CD163", "CTSD"], "5")
 ```
 
+<img src="figure_4_files/figure-markdown_github/phagolysosome-3.png" width="672" />
+
 For myeloid cluster 1, IPA suggested an up-regulation of tissue remodelling genes
 
-```{python tissue_remodelling}
+``` python
 plot_func(["MMP9", "ADAM19", "TSPAN33"], "1")
 ```
 
+<img src="figure_4_files/figure-markdown_github/tissue_remodelling-5.png" width="672" />
+
 In the other direction, we saw genes associated with tissue repair up-regulated in the AC cells in cluster 1
 
-```{python tissue_repair}
+``` python
 plot_func(["HBEGF", "PLAUR", "VEGFA"], "1")
 ```
+
+<img src="figure_4_files/figure-markdown_github/tissue_repair-7.png" width="672" />
