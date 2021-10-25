@@ -1,0 +1,581 @@
+---
+title: "Figure 2"
+output: html_document
+---
+
+```{r message=FALSE}
+library(reticulate)
+use_python("/home/nealpsmith/.conda/envs/sc_analysis/bin/python")
+```
+
+**For figure 3, we wanted to focus in on the mononuclear phagocytes (MPS).  We subsetted our main data object to just
+the MPS clusters. From there we wanted to find the heterogeneity among the MPS and find out which MPS clusters were
+enriched in AA or AC.**
+
+
+First, we isolated just the MPS clusters from our original data object.  Next, we wanted to determine the optimal number
+of clusters for our MPS.
+
+```{python rand_func, message=FALSE}
+import pegasus as pg
+import numpy as np
+import pandas as pd
+import concurrent.futures
+from sklearn.metrics.cluster import adjusted_rand_score
+import random
+import time
+import leidenalg
+import concurrent.futures
+import os
+from pegasus.tools import construct_graph
+from scipy.sparse import csr_matrix
+
+# Use Rand index to determine leiden resolution to use
+def rand_index_plot(
+        W,  # adata.uns['W_' + rep] or adata.uns['neighbors']
+        resamp_perc=0.9,
+        resolutions=(0.3, 0.5, 0.7, 0.9, 1.1, 1.3, 1.5, 1.7, 1.9),
+        max_workers=25,
+        n_samples=25,
+        random_state=0
+    ):
+    assert isinstance(W, csr_matrix)
+    rand_indx_dict = {}
+    n_cells = W.shape[0]
+    resamp_size = round(n_cells * resamp_perc)
+
+    for resolution in resolutions:
+
+        true_class = leiden(W, resolution, random_state)
+
+        with concurrent.futures.ProcessPoolExecutor(max_workers=max_workers) as executor:
+            futures = [executor.submit(_collect_samples, W, resolution, n_cells, resamp_size, true_class, random_state)
+                       for i in range(n_samples)]
+            rand_list = [f.result() for f in futures]
+
+        rand_indx_dict[str(resolution)] = rand_list
+        print("Finished {res}".format(res=resolution))
+    return rand_indx_dict
+def leiden(W, resolution, random_state=0):
+
+    start = time.perf_counter()
+
+    G = construct_graph(W)
+    partition_type = leidenalg.RBConfigurationVertexPartition
+    partition = leidenalg.find_partition(
+        G,
+        partition_type,
+        seed=random_state,
+        weights="weight",
+        resolution_parameter=resolution,
+        n_iterations=-1,
+    )
+
+    labels = np.array([str(x + 1) for x in partition.membership])
+
+    end = time.perf_counter()
+    n_clusters = len(set(labels))
+    return pd.Series(labels)
+
+def _collect_samples(W, resolution, n_cells, resamp_size, true_class, random_state=0):
+    samp_indx = random.sample(range(n_cells), resamp_size)
+    samp_data = W[samp_indx][:, samp_indx]
+    true_class = true_class[samp_indx]
+    new_class = leiden(samp_data, resolution, random_state)
+    return adjusted_rand_score(true_class, new_class)
+
+```
+
+
+```{python, rand_plot}
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+mps_harmonized = pg.read_input("/home/nealpsmith/projects/medoff/data/myeloid_harmonized.h5ad")
+
+# rand_indx_dict = rand_index_plot(W = mps_harmonized.uns["W_pca_harmony"],
+#                                       resolutions  = [0.3, 0.5, 0.7, 0.9, 1.1, 1.3, 1.5, 1.7, 1.9],
+#                                       n_samples = 2)
+#
+# plot_df = pd.DataFrame(rand_indx_dict).T
+# plot_df = plot_df.reset_index()
+# plot_df = plot_df.melt(id_vars="index")
+# plot_df.to_csv(os.path.join(file_path(), "data", "ari_plots", "myeloid_harmonized_ARI.csv"))
+plot_df = pd.read_csv("/home/nealpsmith/projects/medoff/data/ari_plots/myeloid_harmonized_ARI.csv")
+fig, ax = plt.subplots(1)
+_ = sns.boxplot(x="index", y="value", data=plot_df, ax = ax)
+for box in ax.artists:
+    box.set_facecolor("grey")
+ax.artists[6].set_facecolor("red") # The one we chose!
+ax.spines['right'].set_visible(False)
+ax.spines['top'].set_visible(False)
+ax.tick_params(axis='both', which='major', labelsize=15)
+_ = ax.set_ylabel("Adjusted Rand index", size = 20)
+_ = ax.set_xlabel("leiden resolution", size = 20)
+_ = plt.axhline(y = 0.9, color = "black", linestyle = "--")
+fig.tight_layout()
+fig
+```
+
+
+Based on this rand index approach, we can see that a leiden resolution of 1.5 is the highest resolution where the
+median ARI of all iterations was > 0.9.  Given this, we started our clustering at this resolution.
+
+```{python clustering}
+import scanpy as sc
+import matplotlib.colors as clr
+colormap = clr.LinearSegmentedColormap.from_list('gene_cmap', ["#d3d3d3" ,'#482cc7'], N=200)
+
+# pg.leiden(mps_harmonized, resolution = 1.5, rep = "pca_harmony", random_state = 2)
+
+sc.pl.umap(mps_harmonized, color = ["leiden_labels"], legend_loc = "on data")
+```
+
+After visually assessing many genes and through expert annotation, we could see that there was a small cluster of
+CLEC9A+ cDC1 cells among cluster 3.  Given we know that cDC1s have a distinct biological function, we manually
+subsetted these cells to represent their own cluster.  We can defend this choice by scoring cells using a cDC1 gene set
+that was published by Villani et al. Cell 2017.
+
+```{python, DC1_scoring}
+
+### Want to look at DC1 gene set (we think we see a small cluster of them) ###
+def score_cells(data, gene_set):
+    # Get rid of genes that aren't in data
+    gene_set = [gene for gene in gene_set if gene in data.var_names]
+    print(gene_set)
+    # Limit the data to just those genes
+    dat = data[:, gene_set].X
+    dat = dat.toarray()
+    mean = dat.mean(axis=0)
+    var = dat.var(axis=0)
+    std = np.sqrt(var)
+
+    with np.errstate(divide="ignore", invalid="ignore"):
+        dat = (dat - mean) / std
+    dat[dat < -5] = -5
+    dat[dat > 5] = 5
+
+    scores = dat.mean(axis=1)
+    return (scores)
+
+dc1_genes = ["CLEC9A", "C1ORF54", "HLA-DPA1", "CADM1", "CAMK2D", "CPVL", "HLA-DPB2", "WDFY4", "CPNE3", "IDO1",
+            "HLA-DPB1", "LOC645638", "HLA-DOB", "HLA-DQB1", "HLA-DQB", "CLNK", "CSRP1", "SNX3", "ZNF366",
+             "KIAA1598", "NDRG2", "ENPP1", "RGS10", "AX747832", "CYB5R3", "ID2", "XCR1", "FAM190A", "ASAP1",
+             "SLAMF8", "CD59", "DHRS3", "GCET2", "FNBP1", "TMEM14A", "NET1", "BTLA", "BCL6", "FLT3", "ADAM28", "SLAMF7",
+             "BATF3", "LGALS2", "VAC14", "PPA1", "APOL3", "C1ORF21", "CCND1", "ANPEP", "ELOVL5", "NCALD", "ACTN1",
+             "PIK3CB", "HAVCR2", "GYPC", "TLR10", "ASB2", "KIF16B", "LRRC18", "DST", "DENND1B", "DNASE1L3", "SLC24A4",
+             "VAV3", "THBD", "NAV1", "GSTM4", "TRERF1", "B3GNT7", "LACC1", "LMNA", "PTK2", "IDO2", "MTERFD3", "CD93",
+             "DPP4", "SLC9A9", "FCRL6", "PDLIM7", "CYP2E1", "PDE4DIP", "LIMA1", "CTTNBP2NL", "PPM1M", "OSBPL3", "PLCD1",
+             "CD38", "EHD4", "ACSS2", "LOC541471", "FUCA1", "SNX22", "APOL1", "DUSP10", "FAM160A2", "INF2", "DUSP2",
+             "PALM2", "RAB11FIP4", "DSE", "FAM135A", "KCNK6", "PPM1H", "PAFAH1B3", "PDLIM1", "TGM2", "SCARF1", "CD40",
+             "STX3", "WHAMMP3", "PRELID2", "PQLC2"]
+dc1_genes = [gene for gene in dc1_genes if gene in mps_harmonized.var_names]
+mps_harmonized.obs["dc1_score"] = score_cells(mps_harmonized, dc1_genes)
+
+sc.pl.umap(mps_harmonized, color="dc1_score", cmap = colormap)
+
+```
+
+Additionally, after expert annotation, we did not think cluster 10 represented any unique set of cells and seemed to
+share all major markers with cluster 1.  Therefore, we refined our clustering by combining clusters 1 and 10 and
+manually segregating the cDC1 cells using their UMAP coordinates.
+
+```{python dc1_subsetting}
+mps_harmonized.obs["umap_1"] = mps_harmonized.obsm["X_umap"][:, 0]
+mps_harmonized.obs["umap_2"] = mps_harmonized.obsm["X_umap"][:, 1]
+mps_harmonized.obs["new_clusters"] = mps_harmonized.obs["leiden_labels"]
+mps_harmonized.obs["new_clusters"][mps_harmonized.obs["new_clusters"] == "10"] = "1"
+
+mps_harmonized.obs["new_clusters"][
+        ((mps_harmonized.obs["umap_1"] > 5) & (mps_harmonized.obs["umap_1"] < 6.5)) & (
+                    (mps_harmonized.obs["umap_2"] < -5) & (mps_harmonized.obs["umap_2"] > -6.6))] = "10"
+sc.pl.umap(mps_harmonized, color = "new_clusters", legend_loc = "on data")
+```
+
+#Marker genes
+
+First we can look at marker genes by AUROC.  The motivation here is to determine for each cluster which specific genes
+are good classifiers for cluster membership.  These stats were calculated using the Pegasus ```de_analysis``` function.
+
+```{python DE_analysis}
+# pg.de_analysis(mps_harmonized, cluster = "leiden_labels", auc = True,
+#                n_jobs = len(set(mps_harmonized.obs["leiden_labels"])))
+
+top_auc = {}
+top_genes = {}
+for clust in sorted(set(mps_harmonized.obs["new_clusters"]), key = int) :
+    df_dict = {"auc": mps_harmonized.varm["de_res"]["auroc:{clust}".format(clust=clust)]}
+    df = pd.DataFrame(df_dict, index=mps_harmonized.var.index)
+    df = df.sort_values(by=["auc"], ascending=False)
+    auc_df = df.iloc[0:50]
+    genes = auc_df[auc_df["auc"] >= 0.75].index.values
+    top_genes[clust] = genes
+
+top_gene_df = pd.DataFrame(dict([(k,pd.Series(v)) for k,v in top_genes.items() ]))
+top_gene_df = top_gene_df.rename(columns = {clust : "cluster_{clust}".format(clust=clust) for clust in top_genes.keys()})
+top_gene_df = top_gene_df.replace(np.nan, "")
+```
+
+```{r show_auc}
+library(knitr)
+kable(reticulate::py$top_gene_df, caption = "genes with AUC > 0.75")
+```
+
+We can see from the above AUROC genes, that we don't have a strong enough signal from some clusters to get a good sense
+of their phenotype solely on that.  So we can also find markers using an OVA pseudobulk approach.  To do this, we first
+created a psedudobulk matrix by summing the UMI counts across cells for each unique cluster/sample combination, creating
+a matrix of n genes x (n samples * n clusters).  Using this matrix with DESeq2, For each cluster, we used an input model
+gene ~ in_clust where in_clust is a factor with two levels indicating if the sample was in or not in the cluster being
+tested. Genes with an FDR < 5% were considered marker genes.
+
+```{python pseudobulk}
+# import neals_python_functions as nealsucks
+# # Read in the raw count data
+# raw_data = pg.read_input("/home/nealpsmith/projects/medoff/data/all_data.h5sc")
+# raw_data = raw_data[mps_harmonized.obs_names]
+# raw_data = raw_data[:, mps_harmonized.var_names]
+# raw_data.obs = mps_harmonized.obs[["leiden_labels", "Channel"]]
+#
+# # Create the matrix
+# raw_sum_dict = {}
+# cell_num_dict = {}
+# for samp in set(raw_data.obs["Channel"]):
+#     for clust in set(raw_data.obs["leiden_labels"]):
+#         dat = raw_data[(raw_data.obs["Channel"] == samp) & (raw_data.obs["leiden_labels"] == clust)]
+#         if len(dat) == 0:
+#             continue
+#         cell_num_dict["samp_{samp}_{clust}".format(samp=samp, clust=clust)] = len(dat)
+#         count_sum = np.array(dat.X.sum(axis=0)).flatten()
+#         raw_sum_dict["samp_{samp}_{clust}".format(samp=samp, clust=clust)] = count_sum
+#
+# count_mtx = pd.DataFrame(raw_sum_dict, index=raw_data.var.index.values)
+#
+# meta_df = pd.DataFrame(cell_num_dict, index=["n_cells"]).T
+# meta_df["cluster"] = [name.split("_")[-1] for name in meta_df.index.values]
+# meta_df["sample"] = [name.split("_")[-2] for name in meta_df.index.values]
+# meta_df["phenotype"] = [name.split("_")[-3] for name in meta_df.index.values]
+# meta_df["id"] = ["_".join(name.split("_")[0:2]) for name in meta_df.index.values]
+#
+# clust_df = pd.DataFrame(index=count_mtx.index)
+# # Lets run pseudobulk on clusters
+# for clust in set(mps_harmonized.obs["leiden_labels"]):
+#     print(clust)
+#     meta_temp = meta_df.copy()
+#     meta_temp["isclust"] = ["yes" if cluster == clust else "no" for cluster in meta_temp["cluster"]]
+#
+#     assert all(meta_temp.index.values == count_mtx.columns)
+#     # Run DESeq2
+#     deseq = nealsucks.analysis.deseq2.py_DESeq2(count_matrix=count_mtx, design_matrix=meta_temp,
+#                                                 design_formula="~ isclust")
+#     deseq.run_deseq()
+#     res = deseq.get_deseq_result()
+#     clust_df = clust_df.join(res[["pvalue"]].rename(
+#         columns={"pvalue": "pseudobulk_p_val:{clust}".format(clust=clust)}))
+
+de_res = mps_harmonized.varm["de_res"]
+# de_res = pd.DataFrame(de_res, index=res.index)
+# de_res = de_res.join(clust_df)
+de_res = pd.DataFrame(de_res, index = mps_harmonized.var_names)
+de_res = de_res.fillna(0)
+names = [name for name in de_res.columns if name.startswith("pseudobulk_p_val")]
+
+import statsmodels.stats.multitest as stats
+for name in names :
+    clust = name.split(":")[1]
+    de_res["pseudobulk_q_val:{clust}".format(clust = clust)] = stats.fdrcorrection(de_res[name])[1]
+
+de_res = de_res.to_records(index=False)
+mps_harmonized.varm["de_res"] = de_res
+
+top_genes = {}
+for clust in sorted(set(mps_harmonized.obs["leiden_labels"]), key = int) :
+    df_dict = {"auc": mps_harmonized.varm["de_res"]["auroc:{clust}".format(clust=clust)],
+               "pseudo_q" : mps_harmonized.varm["de_res"]["pseudobulk_q_val:{clust}".format(clust = clust)],
+               "pseudo_p" : mps_harmonized.varm["de_res"]["pseudobulk_p_val:{clust}".format(clust = clust)],
+               "pseudo_log_fc" : mps_harmonized.varm["de_res"]["pseudobulk_log_fold_change:{clust}".format(clust = clust)],
+               "percent" : mps_harmonized.varm["de_res"]["percentage:{clust}".format(clust = clust)]}
+    df = pd.DataFrame(df_dict, index=mps_harmonized.var.index)
+    # Lets limit to genes where at least 20% cells express it
+    df = df[df["percent"] > 20]
+    df = df.sort_values(by=["auc"], ascending=False)
+    auc_df = df.iloc[0:50]
+    # genes = df.index.values
+    # Get top 50 genes (first by AUC, then by pseudobulk)
+    genes = auc_df[auc_df["auc"] >= 0.75].index.values
+
+    n_from_pseudo = 50 - len(genes)
+    if n_from_pseudo > 0 :
+        # Dont want to repeat genes
+        pseudobulk = df.drop(genes)
+        pseudobulk = pseudobulk[(pseudobulk["pseudo_q"] < 0.05)]
+        pseudobulk = pseudobulk.sort_values(by = "pseudo_log_fc", ascending = False).iloc[0:n_from_pseudo,:].index.values
+        pseudobulk = [name for name in pseudobulk if name not in genes]
+        genes = np.concatenate((genes, pseudobulk))
+
+    print("Cluster {clust}: {length}".format(clust = clust, length = len(genes)))
+    top_genes[clust] = genes
+
+top_gene_df = pd.DataFrame(dict([(k,pd.Series(v)) for k,v in top_genes.items() ]))
+top_gene_df = top_gene_df.rename(columns = {clust : "cluster_{clust}".format(clust=clust) for clust in top_genes.keys()})
+top_gene_df = top_gene_df.replace(np.nan, "")
+
+```
+
+```{r, show_auc_and_pseudo}
+kable(reticulate::py$top_gene_df, caption = "genes with AUC> 0.75 or pseudo q < 0.05")
+```
+
+Now with the AUROC and OVA marker genes, we can visualize the markers with a heatmap.  First, we looked at the data with
+a heatmap where both the rows and columns were clustered.
+
+```{python heatmap1}
+from mpl_toolkits.axes_grid1 import make_axes_locatable
+import matplotlib as mpl
+heatmap_genes = []
+repeated_genes = [] # Get genes that are not unique, do not want to annotate them
+for key in top_genes.keys() :
+    for gene in top_genes[key] :
+        if gene not in heatmap_genes :
+            heatmap_genes.append(gene)
+        else :
+            repeated_genes.append(gene)
+
+# Get the genes for annotation: top markers that are not in repeated genes
+annot_genes = {}
+for clust in top_genes.keys() :
+    non_rep_genes = [gene for gene in top_genes[clust] if gene not in repeated_genes and not gene.startswith("RP")]
+    annot_genes[clust] = non_rep_genes
+
+# Write out the annotation genes for the heatmap (making with ComplexHeatmap)
+annot_genes = pd.DataFrame(dict([ (k,pd.Series(v)) for k,v in annot_genes.items() ]))
+annot_genes = annot_genes.rename(columns = {clust : "cluster_{clust}".format(clust=clust) for clust in annot_genes.columns})
+# Lets add the colors for each cluster from the UMAP
+clust_cols = dict(zip(sorted(set(mps_harmonized.obs["new_clusters"]), key = int),
+                      mps_harmonized.uns["new_clusters_colors"]))
+clust_cols = pd.DataFrame(clust_cols,
+                          index = ["col"]).rename(columns = dict(zip(clust_cols.keys(),
+                                                                     ["cluster_{clust}".format(clust = clust) for clust
+                                                                      in clust_cols.keys()])))
+
+annot_genes = annot_genes.append(clust_cols)
+
+# Also need to add mean gene counts
+# Get the mean gene counts for sidebar
+gene_val_list = []
+gene_val_dict = {}
+for clust in sorted(set(mps_harmonized.obs["new_clusters"]), key = int) :
+    gene_vals = mps_harmonized.obs["n_genes"][mps_harmonized.obs["new_clusters"] == clust]
+
+    mean = np.mean(gene_vals)
+    gene_val_list.append(mean)
+    gene_val_dict[clust] = mean
+
+# Append these mean gene counts to the dataframe
+annot_genes = annot_genes.append(pd.DataFrame(gene_val_dict,
+                          index = ["mean_genes"]).rename(columns = dict(zip(gene_val_dict.keys(),
+                                                                     ["cluster_{clust}".format(clust = clust) for clust
+                                                                      in gene_val_dict.keys()]))))
+
+
+# Get the mean expression of the top genes from each cluster
+de_df = {"mean_log_{clust}".format(clust = clust) : mps_harmonized.varm["de_res"]["mean_logExpr:{clust}".format(clust = clust)] for clust in sorted(set(mps_harmonized.obs["new_clusters"]), key = int)}
+de_df = pd.DataFrame(de_df, index = mps_harmonized.var.index)
+
+heatmap_df = de_df.loc[heatmap_genes]
+
+
+colors = sns.color_palette("ch:2.5,-.2,dark=.2", n_colors = len(gene_val_list)).as_hex()
+# Put the gene values in order lowest to highest
+sorted_cols = sorted(gene_val_list)
+
+fig, ax = plt.subplots(1, 1, figsize = (10, 10))
+divider = make_axes_locatable(ax)
+axDivY = divider.append_axes( 'right', size=0.2, pad= 0.1)
+axDivY2 = divider.append_axes( 'right', size=0.2, pad= 0.2)
+axDivY3 = divider.append_axes( 'right', size=0.2, pad= 0.2)
+axDivY4 = divider.append_axes( 'top', size=0.2, pad= 0.2)
+
+ax1 = sns.clustermap(heatmap_df, method = "ward", row_cluster =True, col_cluster =True, z_score = 0, cmap = "vlag")
+col_order = np.array([name.split("_")[-1] for name in ax1.data2d.columns])
+index = [sorted_cols.index(gene_val_dict[clust]) for clust in col_order]
+plt.close()
+ax1 = sns.heatmap(ax1.data2d, cmap = "vlag", ax = ax, cbar_ax = axDivY)
+ax2 = axDivY2.imshow(np.array([[min(gene_val_list), max(gene_val_list)]]), cmap = mpl.colors.ListedColormap(list(colors)),
+                     interpolation = "nearest", aspect = "auto")
+axDivY2.set_axis_off()
+axDivY2.set_visible(False)
+_ = plt.colorbar(ax2, cax = axDivY3)
+_ = axDivY3.set_title("n_genes")
+ax3 = axDivY4.imshow(np.array([index]),cmap=mpl.colors.ListedColormap(list(colors)),
+              interpolation="nearest", aspect="auto")
+axDivY4.set_axis_off()
+_ = plt.title("top genes for every cluster")
+plt.show()
+
+```
+
+To make things more readable, we also made a heatmap where we kept the columns clustered such that phenotypically
+similar clusters were grouped together, but manually ordered the rows.
+
+
+```{python ordered_heatmap}
+n_heatmap_genes = {}
+heatmap_genes = []
+for key in col_order :
+    cnt = 0
+    for gene in top_genes[key] :
+        if gene not in heatmap_genes :
+            heatmap_genes.append(gene)
+            cnt+=1
+    n_heatmap_genes[key] = cnt
+
+n_heatmap_genes = pd.DataFrame(n_heatmap_genes, index = ["n_genes"]).rename(columns = dict(zip(n_heatmap_genes.keys(),
+                                                                                               ["cluster_{clust}".format(clust = clust) for
+                                                                                                clust in n_heatmap_genes.keys()])))
+# Add number of genes in the heatmap for each clusters
+annot_genes = annot_genes.append(n_heatmap_genes)
+annot_genes = annot_genes.reset_index()
+annot_genes = annot_genes.fillna('')
+
+
+# Get the mean expression of the top genes from each cluster
+de_df = {"mean_log_{clust}".format(clust = clust) : mps_harmonized.varm["de_res"]["mean_logExpr:{clust}".format(clust = clust)] for clust in sorted(set(mps_harmonized.obs["new_clusters"]), key = int)}
+de_df = pd.DataFrame(de_df, index = mps_harmonized.var.index)
+
+heatmap_df = de_df.loc[heatmap_genes]
+
+# Get the mean gene counts for sidebar
+gene_val_list = []
+gene_val_dict = {}
+for clust in sorted(set(mps_harmonized.obs["new_clusters"]), key = int) :
+    gene_vals = mps_harmonized.obs["n_genes"][mps_harmonized.obs["new_clusters"] == clust]
+
+    mean = np.mean(gene_vals)
+    gene_val_list.append(mean)
+    gene_val_dict[clust] = mean
+
+colors = sns.color_palette("ch:2.5,-.2,dark=.2", n_colors = len(gene_val_list)).as_hex()
+# Put the gene values in order lowest to highest
+sorted_cols = sorted(gene_val_list)
+
+fig, ax = plt.subplots(1, 1, figsize = (10, 10))
+divider = make_axes_locatable(ax)
+axDivY = divider.append_axes( 'right', size=0.2, pad= 0.1)
+axDivY2 = divider.append_axes( 'right', size=0.2, pad= 0.2)
+axDivY3 = divider.append_axes( 'right', size=0.2, pad= 0.2)
+axDivY4 = divider.append_axes( 'top', size=0.2, pad= 0.2)
+
+# color_label_list =[random.randint(0,14) for i in range(14)]
+ax1 = sns.clustermap(heatmap_df, method = "ward", row_cluster =False, col_cluster =True, z_score = 0, cmap = "vlag")
+col_order = np.array([name.split("_")[-1] for name in ax1.data2d.columns])
+index = [sorted_cols.index(gene_val_dict[clust]) for clust in col_order]
+plt.close()
+
+heatmap_carpet = ax1.data2d
+
+ax1 = sns.heatmap(ax1.data2d, cmap = "vlag", ax = ax, cbar_ax = axDivY)
+ax2 = axDivY2.imshow(np.array([[min(gene_val_list), max(gene_val_list)]]), cmap = mpl.colors.ListedColormap(list(colors)),
+                     interpolation = "nearest", aspect = "auto")
+axDivY2.set_axis_off()
+axDivY2.set_visible(False)
+_ = plt.colorbar(ax2, cax = axDivY3)
+_ = axDivY3.set_title("n_genes")
+ax3 = axDivY4.imshow(np.array([index]),cmap=mpl.colors.ListedColormap(list(colors)),
+              interpolation="nearest", aspect="auto")
+axDivY4.set_axis_off()
+_ = plt.title("top genes for every cluster")
+plt.show()
+```
+
+Finally, we wanted to make a publication-ready figure using the wonderful ```ComplexHeatmap``` package, where we can
+add some annotations for each cluster and add spaces between clusters to make it even more readable.
+
+
+```{r nice_heatmap, fig.width = 6, fig.height = 10, warning = FALSE, message = FALSE}
+library(ComplexHeatmap)
+library(tidyverse)
+library(magrittr)
+library(circlize)
+
+heatmap_data <- reticulate::py$heatmap_carpet
+annotation_info <- reticulate::py$annot_genes
+rownames(annotation_info) <- annotation_info$index
+annotation_info$index <- NULL
+
+
+for (c in colnames(annotation_info)){
+  annotation_info[[c]] <- unlist(annotation_info[[c]])
+}
+# Change the column names to be cleaner
+colnames(heatmap_data) <- paste("Cluster", unlist(strsplit(colnames(heatmap_data), "_"))[3*(1:length(colnames(heatmap_data)))], sep = " ")
+
+# Make column names consistent with heatmap data
+colnames(annotation_info) <- sapply(str_replace(colnames(annotation_info), "_", " "), str_to_title)
+
+# Lets just get the genes
+annotation_genes <- unique(as.character(unlist(annotation_info[1:5,])))
+annotation_genes <- annotation_genes[annotation_genes != ""]
+
+# Now lets organize the color info that will be used for annotations
+col_info = annotation_info %>%
+  t() %>%
+  as.data.frame() %>%
+  dplyr::select(-mean_genes) %>%
+  rownames_to_column(var = "cluster") %>%
+  reshape2::melt(id.vars = c("cluster", "col")) %>%
+  select(-variable)
+
+# Get the gene colors
+gene_cols = c()
+for (gene in annotation_genes){
+  color = as.character(filter(col_info, value == gene)["col"][[1]])
+  gene_cols = c(gene_cols, color)
+}
+
+# Get the cluster colors
+clust_cols <- c()
+for (clust in colnames(heatmap_data)){
+  color <- col_info %>%
+    dplyr::select(cluster, col) %>%
+    distinct() %>%
+    filter(cluster == clust)
+  clust_cols <- c(clust_cols, as.character(color$col))
+}
+
+mean_genes <- annotation_info["mean_genes",] %>%
+  mutate_each(funs(as.numeric(as.character(.)))) %>%
+  select(colnames(heatmap_data)) # To order them like they will be ordered in the heatmap (same as how GEX data was read in)
+
+gene_col_fun <- colorRamp2(c(min(mean_genes), max(mean_genes)), c("#1d111d", "#bbe7c8"))
+gene_bar <-  HeatmapAnnotation("mean # genes" = as.numeric(mean_genes), col = list("mean # genes" = gene_col_fun), show_legend = FALSE)
+gene_lgd <- Legend(col_fun = gene_col_fun, title = "# genes", legend_height = unit(4, "cm"), title_position = "topcenter")
+
+
+heatmap_col_fun = colorRamp2(c(min(heatmap_data), 0, max(heatmap_data)), c("purple", "black", "yellow"))
+heatmap_lgd = Legend(col_fun = heatmap_col_fun, title = "z-score", legend_height = unit(4, "cm"), title_position = "topcenter")
+
+lgd_list <- packLegend(heatmap_lgd, gene_lgd, column_gap = unit(1,"cm"), direction = "horizontal")
+
+split <- c()
+for (clust in colnames(heatmap_data)){
+  n_split <- as.numeric(as.character(annotation_info["n_genes", clust]))
+  split <- c(split, rep(gsub("Cluster ", "", clust), n_split))
+}
+split <- factor(split, levels = as.character(unique(split)))
+
+# Make block annotation
+left_annotation =   HeatmapAnnotation(blk = anno_block(gp = gpar(fill = clust_cols, col = clust_cols)), which = "row", width = unit(1.5, "mm"))
+
+heatmap_list = Heatmap(heatmap_data, name = "z-score", col = heatmap_col_fun, cluster_rows = FALSE, cluster_columns = TRUE,
+                       cluster_row_slices = FALSE, row_km = 1, cluster_column_slices = FALSE,
+                       clustering_method_columns = "ward.D2", clustering_distance_columns = "euclidean",
+                       column_dend_reorder = FALSE, top_annotation = gene_bar, show_heatmap_legend = FALSE,
+                       column_names_gp = gpar(col = clust_cols, fontface = "bold"),
+                       split = split, left_annotation = left_annotation, show_column_names = FALSE) +
+  rowAnnotation(link = anno_mark(at = match(annotation_genes, rownames(heatmap_data)),labels = annotation_genes,
+                                 labels_gp = gpar(col = gene_cols, fontsize = 8, fontface = "bold")))
+
+draw(heatmap_list, heatmap_legend_list =lgd_list, padding = unit(c(0.5, 0.5, 2, 2), "cm"), cluster_rows = FALSE,
+     cluster_row_slices = FALSE)
+
+```
