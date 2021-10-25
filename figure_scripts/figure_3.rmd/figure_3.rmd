@@ -1,6 +1,6 @@
 ---
-title: "Figure 2"
-output: html_document
+title: "Figure 3"
+output: rmarkdown::github_document
 ---
 
 ```{r message=FALSE}
@@ -14,7 +14,11 @@ enriched in AA or AC.**
 
 
 First, we isolated just the MPS clusters from our original data object.  Next, we wanted to determine the optimal number
-of clusters for our MPS.
+of clusters for our MPS. Briefly, similar to Reyes et al., we quantified cluster stability at many Leiden resolutions to
+determine which one should be used for downstream analyses.  First, data was clustered at many different resolutions
+ranging from 0.3 to 1.9.  Next, we iteratively subsampled 90% of the data (20 iterations) and at each iteration, we
+made a new clustering solution with the subsampled data and used the Adjusted Rand Index (ARI) to compare it to the
+clustering solution from the full data.
 
 ```{python rand_func, message=FALSE}
 import pegasus as pg
@@ -491,7 +495,7 @@ Finally, we wanted to make a publication-ready figure using the wonderful ```Com
 add some annotations for each cluster and add spaces between clusters to make it even more readable.
 
 
-```{r nice_heatmap, fig.width = 6, fig.height = 10, warning = FALSE, message = FALSE}
+```{r nice_heatmap, fig.width = 6, fig.height = 10.2, warning = FALSE, message = FALSE}
 library(ComplexHeatmap)
 library(tidyverse)
 library(magrittr)
@@ -577,5 +581,199 @@ heatmap_list = Heatmap(heatmap_data, name = "z-score", col = heatmap_col_fun, cl
 
 draw(heatmap_list, heatmap_legend_list =lgd_list, padding = unit(c(0.5, 0.5, 2, 2), "cm"), cluster_rows = FALSE,
      cluster_row_slices = FALSE)
+
+```
+
+
+Beyond looking at unbiased markers, we wanted to use legacy knowledge to better understand the biological role of our
+clusters.  Using dot plots, we can see some cannonical genes expressed by the clusters.
+
+```{python dot_plots}
+mps_gene_dict = {
+	"monocyte" : ["CD14", "FCGR3A", "S100A8", "C5AR1", "FCN1", "VCAN", "CCR1", "CCR2"],
+	"cDC" : ["IRF4", "CD1C", "CD1E", "FCER1A", "CLEC10A", "IRF8", "BATF3", "CLEC9A", "XCR1", "CCR7", "LAMP3",
+             "AXL", "PPP1R14A", "TCF4", "GZMB", "JCHAIN", "IL3RA"],
+	"macrophage" : ["MARCO", "MSR1", "VSIG4", "C1QA", "C1QB", "C1QC", "PPARG", "CD163"],
+    "macrophage_specialization" : ["FABP4", "APOE", "VEGFA", "AREG", "SPP1", "MERTK", "CCL2", "CCL3", "CCL4",
+                                   "CXCL9", "CXCL10", "CXCL11"]
+}
+
+dot_cmap = clr.LinearSegmentedColormap.from_list('gene_cmap', ["#d3d3d3", "#a5cde3", "#6dafd6", '#08306b'], N=200)
+
+for key in mps_gene_dict.keys() :
+    plot = sc.pl.dotplot(mps_harmonized, mps_gene_dict[key], groupby = "new_clusters",
+                  categories_order = ["11", "5", "6", "7", "13", "2", "14", "1", "8", "4", "9", "10", "3", "12"],
+                         show = False, return_fig = True, title = "{key} markers".format(key = key),
+                         cmap = dot_cmap, dot_max = 1)
+    axes_dict = plot.get_axes()
+    axes_dict["mainplot_ax"].set_axisbelow(True)
+    axes_dict["mainplot_ax"].grid()
+    plt.show()
+    plt.close()
+
+```
+
+
+#Differential abundance analysis
+
+Next we wanted to evaluate which clusters were associated with particular group:condition combinations.  First, we can
+do this in a qualitative way, looking at the UMAP embedding density of the cells that are in our different categorical
+groups.  The takeaway from these plots are that the cells are not uniformly distributed across the categorical groups
+and there are some biases.
+
+```{python embedding_density}
+mps_harmonized.obs["pheno_tmpt"] = ["_".join([pheno, tmpt]) for pheno, tmpt in zip(mps_harmonized.obs["phenotype"],
+                                                                                   mps_harmonized.obs["sample"])]
+sc.tl.embedding_density(mps_harmonized, basis = "umap", groupby = "pheno_tmpt", key_added = "pheno_tmpt_dens")
+dens_plot = sc.pl.embedding_density(mps_harmonized, basis = "umap", key = "pheno_tmpt_dens", ncols = 3,
+                                    return_fig = True, show = False, wspace = 0.3)
+dens_plot.set_size_inches(7, 5)
+dens_plot
+```
+
+To look at the data in a more quantitative way, we used a mixed-effects association logistic regression model similar
+to that described by Fonseka et al.  We fit a logistic regression modelfor each cell cluster. Each cluster was modelled
+independently as follows :
+```cluster ~ 1 + condition:group + condition + group + (1 | id)```
+
+The least-squares means of the factors in the model were calculated and all pairwise contrasts between the means of the
+groups at each condition (e.g. AA vs AC within baseline, AA vs AC within allergen, etc.) were compared.  The OR with
+confidence interval for each sample/condition combination were plotted.
+
+```{python cell_info}
+cell_info = mps_harmonized.obs
+```
+
+```{r diff_abund, warning = FALSE, message = FALSE}
+library(lme4)
+library(ggplot2)
+library(emmeans)
+
+# A function to perform the mixed-effects logistic regression modelling, returning, p-values, odds-ratio and confidence intervals
+get_abund_info <- function(dataset, cluster, contrast, random_effects = NULL, fixed_effects = NULL){
+  # Generate design matrix from cluster assignments
+  cluster <- as.character(cluster)
+  designmat <- model.matrix(~ cluster + 0, data.frame(cluster = cluster))
+  dataset <- cbind(designmat, dataset)
+  # Create output list to hold results
+  res <- vector(mode = "list", length = length(unique(cluster)))
+  names(res) <- attributes(designmat)$dimnames[[2]]
+
+  # Create model formulas
+  model_rhs <- paste0(c(paste0(fixed_effects, collapse = " + "),
+                        paste0("(1|", random_effects, ")", collapse = " + ")),
+                      collapse = " + ")
+
+  # Initialize list to store model objects for each cluster
+  cluster_models <- vector(mode = "list",
+                           length = length(attributes(designmat)$dimnames[[2]]))
+  names(cluster_models) <- attributes(designmat)$dimnames[[2]]
+
+  for (i in seq_along(attributes(designmat)$dimnames[[2]])) {
+    test_cluster <- attributes(designmat)$dimnames[[2]][i]
+
+    # Make it a non-intercept model to get odds for each variable
+    full_fm <- as.formula(paste0(c(paste0(test_cluster, " ~ 1 + ", contrast, " + "),
+                                   model_rhs), collapse = ""))
+
+    full_model <- lme4::glmer(formula = full_fm, data = dataset,
+                              family = binomial, nAGQ = 1, verbose = 0,
+                              control = glmerControl(optimizer = "bobyqa"))
+
+    pvals <-lsmeans(full_model, pairwise ~ "phenotype | sample")
+
+    p_val_df <- summary(pvals$contrasts)
+    p_val_df$cluster <- test_cluster
+
+    ci <- eff_size(pvals, sigma = sigma(full_model), edf = df.residual(full_model))
+    ci_df <- summary(ci) %>%
+    dplyr::select(sample, asymp.LCL, asymp.UCL)
+    ci_df$cluster <- test_cluster
+
+    info_df <- left_join(p_val_df, ci_df, by = c("sample", "cluster"))
+
+    cluster_models[[i]] <- info_df
+
+  }
+  return(cluster_models)
+}
+
+# A function to make a forest plot for the differential abundance analyses
+plot_contrasts <- function(d, x_breaks_by = 1, wrap_ncol = 6, y_ord = FALSE) {
+  # if (y_ord != FALSE){
+  #   d$cluster <- factor(d$cluster, levels = y_ord)
+  # }
+  ggplot() +
+    annotate(
+      geom = "rect",
+      xmin = -Inf,
+      xmax = Inf,
+      ymin = seq(from = 1, to = length(unique(d$cluster)), by = 2) - 0.5,
+      ymax = seq(from = 1, to = length(unique(d$cluster)), by = 2) + 0.5,
+      alpha = 0.2
+    ) +
+    geom_vline(xintercept = 0, size = 0.2) +
+    geom_errorbarh(
+      data = d,
+      mapping = aes(
+        xmin = asymp.LCL, xmax = asymp.UCL, y = cluster,
+        color = sig
+      ),
+      height = 0
+    ) +
+    geom_point(
+      data = d,
+      mapping = aes(
+        x = estimate, y = cluster,
+        color = sig
+      ),
+      size = 3
+    ) +
+    scale_color_manual(
+      name = "P < 0.05",
+      values = c("#FF8000", "#40007F", "grey60"),
+      breaks = c("AA", "ANA")
+    ) +
+    scale_x_continuous(
+      breaks = log(c(0.125, 0.5, 1, 2, 4)),
+      labels = function(x) exp(x)
+    ) +
+    scale_y_discrete(
+      # expand = c(0, 0),
+      # breaks = seq(1, length(unique(d$cluster))),
+      labels = levels(plot_df$cluster),
+    ) +
+    # annotation_logticks(sides = "b") +
+    expand_limits(y = c(0.5, length(unique(d$cluster)) + 0.5)) +
+    # facet_grid(~ GeneName) +
+    facet_wrap(~ sample, ncol = wrap_ncol) +
+    theme_classic() +
+    theme(
+      strip.text = element_text(face = "italic"),
+      text = element_text(size = 15)
+    ) +
+    labs(
+      title = "contrasts by sample",
+      x = "Odds Ratio",
+      y = "cluster"
+    )
+}
+
+clust_df <- reticulate::py$cell_info
+
+abund_info <- get_abund_info(clust_df, cluster = clust_df$new_clusters,
+                            contrast = "sample:phenotype",
+                            random_effects = "id",
+                            fixed_effects = c("sample", "phenotype"))
+
+plot_df <- do.call(rbind, abund_info)
+plot_df$direction <- ifelse(plot_df$estimate > 0, "AA", "ANA")
+
+plot_df$cluster <- as.numeric(gsub("cluster", "", plot_df$cluster))
+plot_df$sig <- ifelse(plot_df$p.value < 0.05, plot_df$direction, "non_sig")
+cl_order <- c(11, 5, 6, 7, 13, 2, 14, 1, 8, 4, 9, 10, 3, 12)
+plot_df$cluster <- factor(plot_df$cluster, levels = rev(cl_order))
+plot_df$sample <- factor(plot_df$sample, levels = c("Pre", "Dil", "Ag"))
+plot_contrasts(plot_df)
 
 ```
