@@ -202,8 +202,8 @@ First we can look at marker genes by AUROC.  The motivation here is to determine
 are good classifiers for cluster membership.  These stats were calculated using the Pegasus ```de_analysis``` function.
 
 ```{python DE_analysis}
-# pg.de_analysis(mps_harmonized, cluster = "leiden_labels", auc = True,
-#                n_jobs = len(set(mps_harmonized.obs["leiden_labels"])))
+# pg.de_analysis(mps_harmonized, cluster = "new_clusters", auc = True,
+#                n_jobs = len(set(mps_harmonized.obs["new_clusters"])))
 
 top_auc = {}
 top_genes = {}
