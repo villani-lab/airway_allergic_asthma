@@ -79,8 +79,6 @@ def _collect_samples(W, resolution, n_cells, resamp_size, true_class, random_sta
     return adjusted_rand_score(true_class, new_class)
 ```
 
-<img src="figure_3_files/figure-markdown_github/rand_func-1.png" width="672" />
-
 ``` python
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -95,6 +93,11 @@ mps_harmonized = pg.read_input("/home/nealpsmith/projects/medoff/data/myeloid_ha
 # plot_df = plot_df.reset_index()
 # plot_df = plot_df.melt(id_vars="index")
 # plot_df.to_csv(os.path.join(file_path(), "data", "ari_plots", "myeloid_harmonized_ARI.csv"))
+```
+
+    ## 2021-10-29 07:44:19,847 - pegasus - INFO - Time spent on 'read_input' = 1.12s.
+
+``` python
 plot_df = pd.read_csv("/home/nealpsmith/projects/medoff/data/ari_plots/myeloid_harmonized_ARI.csv")
 fig, ax = plt.subplots(1)
 _ = sns.boxplot(x="index", y="value", data=plot_df, ax = ax)
@@ -111,7 +114,7 @@ fig.tight_layout()
 fig
 ```
 
-<img src="figure_3_files/figure-markdown_github/rand_plot-3.png" width="672" />
+<img src="figure_3_files/figure-markdown_github/rand_plot-1.png" width="672" />
 
 Based on this rand index approach, we can see that a leiden resolution of 1.5 is the highest resolution where the median ARI of all iterations was &gt; 0.9. Given this, we started our clustering at this resolution.
 
@@ -125,7 +128,7 @@ colormap = clr.LinearSegmentedColormap.from_list('gene_cmap', ["#d3d3d3" ,'#482c
 sc.pl.umap(mps_harmonized, color = ["leiden_labels"], legend_loc = "on data")
 ```
 
-<img src="figure_3_files/figure-markdown_github/clustering-5.png" width="672" /><img src="figure_3_files/figure-markdown_github/clustering-6.png" width="672" />
+<img src="figure_3_files/figure-markdown_github/clustering-3.png" width="672" /><img src="figure_3_files/figure-markdown_github/clustering-4.png" width="672" />
 
 After visually assessing many genes and through expert annotation, we could see that there was a small cluster of CLEC9A+ cDC1 cells among cluster 3. Given we know that cDC1s have a distinct biological function, we manually subsetted these cells to represent their own cluster. We can defend this choice by scoring cells using a cDC1 gene set that was published by Villani et al. Cell 2017.
 
@@ -168,7 +171,7 @@ mps_harmonized.obs["dc1_score"] = score_cells(mps_harmonized, dc1_genes)
 sc.pl.umap(mps_harmonized, color="dc1_score", cmap = colormap)
 ```
 
-<img src="figure_3_files/figure-markdown_github/DC1_scoring-9.png" width="672" /><img src="figure_3_files/figure-markdown_github/DC1_scoring-10.png" width="672" />
+<img src="figure_3_files/figure-markdown_github/DC1_scoring-7.png" width="672" /><img src="figure_3_files/figure-markdown_github/DC1_scoring-8.png" width="672" />
 
 Additionally, after expert annotation, we did not think cluster 10 represented any unique set of cells and seemed to share all major markers with cluster 1. Therefore, we refined our clustering by combining clusters 1 and 10 and manually segregating the cDC1 cells using their UMAP coordinates.
 
@@ -184,15 +187,15 @@ mps_harmonized.obs["new_clusters"][
 sc.pl.umap(mps_harmonized, color = "new_clusters", legend_loc = "on data")
 ```
 
-<img src="figure_3_files/figure-markdown_github/dc1_subsetting-13.png" width="672" /><img src="figure_3_files/figure-markdown_github/dc1_subsetting-14.png" width="672" />
+<img src="figure_3_files/figure-markdown_github/dc1_subsetting-11.png" width="672" /><img src="figure_3_files/figure-markdown_github/dc1_subsetting-12.png" width="672" />
 
 # Marker genes
 
 First we can look at marker genes by AUROC. The motivation here is to determine for each cluster which specific genes are good classifiers for cluster membership. These stats were calculated using the Pegasus `de_analysis` function.
 
 ``` python
-# pg.de_analysis(mps_harmonized, cluster = "leiden_labels", auc = True,
-#                n_jobs = len(set(mps_harmonized.obs["leiden_labels"])))
+# pg.de_analysis(mps_harmonized, cluster = "new_clusters", auc = True,
+#                n_jobs = len(set(mps_harmonized.obs["new_clusters"])))
 
 top_auc = {}
 top_genes = {}
@@ -209,7 +212,7 @@ top_gene_df = top_gene_df.rename(columns = {clust : "cluster_{clust}".format(clu
 top_gene_df = top_gene_df.replace(np.nan, "")
 ```
 
-<img src="figure_3_files/figure-markdown_github/DE_analysis-17.png" width="672" />
+<img src="figure_3_files/figure-markdown_github/DE_analysis-15.png" width="672" />
 
 ``` r
 library(knitr)
