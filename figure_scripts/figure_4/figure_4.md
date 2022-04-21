@@ -1,4 +1,4 @@
-Figure 3
+Figure 4
 ================
 
 ``` r
@@ -6,9 +6,9 @@ library(reticulate)
 use_python("/home/nealpsmith/.conda/envs/sc_analysis/bin/python")
 ```
 
-**For figure 3, we wanted to focus in on the mononuclear phagocytes (MPS). We subsetted our main data object to just the MPS clusters. From there we wanted to find the heterogeneity among the MPS and find out which MPS clusters were enriched in AA or AC.**
+**For figure 4, we wanted to focus in on the T cells. We subsetted our main data object to just the T cell clusters. From there we had a few goals : Find heterogeneity among the T cells, determine which T cell clusters are enriched in AA and ANA and look for DEGs among the T cells.**
 
-First, we isolated just the MPS clusters from our original data object. Next, we wanted to determine the optimal number of clusters for our MPS. Briefly, similar to Reyes et al., we quantified cluster stability at many Leiden resolutions to determine which one should be used for downstream analyses. First, data was clustered at many different resolutions ranging from 0.3 to 1.9. Next, we iteratively subsampled 90% of the data (20 iterations) and at each iteration, we made a new clustering solution with the subsampled data and used the Adjusted Rand Index (ARI) to compare it to the clustering solution from the full data.
+First, we isolated just the T cells from our original data object. NK cells were segregated and removed. Next, we wanted to determine the optimal number of clusters for our T cells.
 
 ``` python
 import pegasus as pg
@@ -79,31 +79,28 @@ def _collect_samples(W, resolution, n_cells, resamp_size, true_class, random_sta
     return adjusted_rand_score(true_class, new_class)
 ```
 
+<img src="figure_4_files/figure-markdown_github/rand_func-1.png" width="672" />
+
 ``` python
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-mps_harmonized = pg.read_input("/home/nealpsmith/projects/medoff/data/myeloid_harmonized.h5ad")
+t_cell_harmonized = pg.read_input("/home/nealpsmith/projects/medoff/data/t_cell_harmonized.h5ad")
 
-# rand_indx_dict = rand_index_plot(W = mps_harmonized.uns["W_pca_harmony"],
+# rand_indx_dict = rand_index_plot(W = t_cell_harmonized.uns["W_pca_harmony"],
 #                                       resolutions  = [0.3, 0.5, 0.7, 0.9, 1.1, 1.3, 1.5, 1.7, 1.9],
 #                                       n_samples = 2)
 #
 # plot_df = pd.DataFrame(rand_indx_dict).T
 # plot_df = plot_df.reset_index()
 # plot_df = plot_df.melt(id_vars="index")
-# plot_df.to_csv(os.path.join(file_path(), "data", "ari_plots", "myeloid_harmonized_ARI.csv"))
-```
-
-    ## 2021-10-29 07:44:19,847 - pegasus - INFO - Time spent on 'read_input' = 1.12s.
-
-``` python
-plot_df = pd.read_csv("/home/nealpsmith/projects/medoff/data/ari_plots/myeloid_harmonized_ARI.csv")
+# plot_df.to_csv(os.path.join(file_path(), "data", "ari_plots", "t_cell_harmonized_ARI.csv"))
+plot_df = pd.read_csv("/home/nealpsmith/projects/medoff/data/ari_plots/t_cell_harmonized_ARI.csv")
 fig, ax = plt.subplots(1)
 _ = sns.boxplot(x="index", y="value", data=plot_df, ax = ax)
 for box in ax.artists:
     box.set_facecolor("grey")
-ax.artists[6].set_facecolor("red") # The one we chose!
+ax.artists[5].set_facecolor("red") # The one we chose!
 ax.spines['right'].set_visible(False)
 ax.spines['top'].set_visible(False)
 ax.tick_params(axis='both', which='major', labelsize=15)
@@ -114,97 +111,40 @@ fig.tight_layout()
 fig
 ```
 
-<img src="figure_3_files/figure-markdown_github/rand_plot-1.png" width="672" />
+<img src="figure_4_files/figure-markdown_github/rand_plot-3.png" width="672" />
 
-Based on this rand index approach, we can see that a leiden resolution of 1.5 is the highest resolution where the median ARI of all iterations was &gt; 0.9. Given this, we started our clustering at this resolution.
+Based on this rand index approach, we can see that a leiden resolution of 1.3 is the highest resolution where the soultion remains quite stable. Given this, we went forward with clustering at this resolution. We can immediately appreciate this seperation of CD4 and CD8 clusters
 
 ``` python
 import scanpy as sc
 import matplotlib.colors as clr
 colormap = clr.LinearSegmentedColormap.from_list('gene_cmap', ["#d3d3d3" ,'#482cc7'], N=200)
 
-# pg.leiden(mps_harmonized, resolution = 1.5, rep = "pca_harmony", random_state = 2)
+# pg.leiden(t_cell_harmonized, resolution = 1.3, rep = "pca_harmony")
 
-sc.pl.umap(mps_harmonized, color = ["leiden_labels"], legend_loc = "on data")
+figure = sc.pl.umap(t_cell_harmonized, color = ["leiden_labels", "CD4", "CD8A"],
+                    return_fig = True, show = False, legend_loc = "on data", ncols = 3,
+                    wspace = 0.3, cmap = colormap)
+figure.set_size_inches(12, 4)
+figure
 ```
 
-<img src="figure_3_files/figure-markdown_github/clustering-3.png" width="672" /><img src="figure_3_files/figure-markdown_github/clustering-4.png" width="672" />
-
-After visually assessing many genes and through expert annotation, we could see that there was a small cluster of CLEC9A+ cDC1 cells among cluster 3. Given we know that cDC1s have a distinct biological function, we manually subsetted these cells to represent their own cluster. We can defend this choice by scoring cells using a cDC1 gene set that was published by Villani et al. Cell 2017.
-
-``` python
-
-### Want to look at DC1 gene set (we think we see a small cluster of them) ###
-def score_cells(data, gene_set):
-    # Get rid of genes that aren't in data
-    gene_set = [gene for gene in gene_set if gene in data.var_names]
-    print(gene_set)
-    # Limit the data to just those genes
-    dat = data[:, gene_set].X
-    dat = dat.toarray()
-    mean = dat.mean(axis=0)
-    var = dat.var(axis=0)
-    std = np.sqrt(var)
-
-    with np.errstate(divide="ignore", invalid="ignore"):
-        dat = (dat - mean) / std
-    dat[dat < -5] = -5
-    dat[dat > 5] = 5
-
-    scores = dat.mean(axis=1)
-    return (scores)
-
-dc1_genes = ["CLEC9A", "C1ORF54", "HLA-DPA1", "CADM1", "CAMK2D", "CPVL", "HLA-DPB2", "WDFY4", "CPNE3", "IDO1",
-            "HLA-DPB1", "LOC645638", "HLA-DOB", "HLA-DQB1", "HLA-DQB", "CLNK", "CSRP1", "SNX3", "ZNF366",
-             "KIAA1598", "NDRG2", "ENPP1", "RGS10", "AX747832", "CYB5R3", "ID2", "XCR1", "FAM190A", "ASAP1",
-             "SLAMF8", "CD59", "DHRS3", "GCET2", "FNBP1", "TMEM14A", "NET1", "BTLA", "BCL6", "FLT3", "ADAM28", "SLAMF7",
-             "BATF3", "LGALS2", "VAC14", "PPA1", "APOL3", "C1ORF21", "CCND1", "ANPEP", "ELOVL5", "NCALD", "ACTN1",
-             "PIK3CB", "HAVCR2", "GYPC", "TLR10", "ASB2", "KIF16B", "LRRC18", "DST", "DENND1B", "DNASE1L3", "SLC24A4",
-             "VAV3", "THBD", "NAV1", "GSTM4", "TRERF1", "B3GNT7", "LACC1", "LMNA", "PTK2", "IDO2", "MTERFD3", "CD93",
-             "DPP4", "SLC9A9", "FCRL6", "PDLIM7", "CYP2E1", "PDE4DIP", "LIMA1", "CTTNBP2NL", "PPM1M", "OSBPL3", "PLCD1",
-             "CD38", "EHD4", "ACSS2", "LOC541471", "FUCA1", "SNX22", "APOL1", "DUSP10", "FAM160A2", "INF2", "DUSP2",
-             "PALM2", "RAB11FIP4", "DSE", "FAM135A", "KCNK6", "PPM1H", "PAFAH1B3", "PDLIM1", "TGM2", "SCARF1", "CD40",
-             "STX3", "WHAMMP3", "PRELID2", "PQLC2"]
-dc1_genes = [gene for gene in dc1_genes if gene in mps_harmonized.var_names]
-mps_harmonized.obs["dc1_score"] = score_cells(mps_harmonized, dc1_genes)
-
-sc.pl.umap(mps_harmonized, color="dc1_score", cmap = colormap)
-```
-
-<img src="figure_3_files/figure-markdown_github/DC1_scoring-7.png" width="672" /><img src="figure_3_files/figure-markdown_github/DC1_scoring-8.png" width="672" />
-
-Additionally, after expert annotation, we did not think cluster 10 represented any unique set of cells and seemed to share all major markers with cluster 1. Therefore, we refined our clustering by combining clusters 1 and 10 and manually segregating the cDC1 cells using their UMAP coordinates.
-
-``` python
-mps_harmonized.obs["umap_1"] = mps_harmonized.obsm["X_umap"][:, 0]
-mps_harmonized.obs["umap_2"] = mps_harmonized.obsm["X_umap"][:, 1]
-mps_harmonized.obs["new_clusters"] = mps_harmonized.obs["leiden_labels"]
-mps_harmonized.obs["new_clusters"][mps_harmonized.obs["new_clusters"] == "10"] = "1"
-
-mps_harmonized.obs["new_clusters"][
-        ((mps_harmonized.obs["umap_1"] > 5) & (mps_harmonized.obs["umap_1"] < 6.5)) & (
-                    (mps_harmonized.obs["umap_2"] < -5) & (mps_harmonized.obs["umap_2"] > -6.6))] = "10"
-sc.pl.umap(mps_harmonized, color = "new_clusters", legend_loc = "on data")
-```
-
-<img src="figure_3_files/figure-markdown_github/dc1_subsetting-11.png" width="672" /><img src="figure_3_files/figure-markdown_github/dc1_subsetting-12.png" width="672" />
+<img src="figure_4_files/figure-markdown_github/clustering-5.png" width="1152" />
 
 # Marker genes
 
 First we can look at marker genes by AUROC. The motivation here is to determine for each cluster which specific genes are good classifiers for cluster membership. These stats were calculated using the Pegasus `de_analysis` function.
 
 ``` python
-# pg.de_analysis(mps_harmonized, cluster = "new_clusters", auc = True,
-#                n_jobs = len(set(mps_harmonized.obs["new_clusters"])))
+# pg.de_analysis(t_cell_harmonized, cluster = "leiden_labels", auc = True,
+#                n_jobs = len(set(t_cell_harmonized.obs["leiden_labels"])))
 
 top_auc = {}
 top_genes = {}
-for clust in sorted(set(mps_harmonized.obs["new_clusters"]), key = int) :
-    df_dict = {"auc": mps_harmonized.varm["de_res"]["auroc:{clust}".format(clust=clust)]}
-    df = pd.DataFrame(df_dict, index=mps_harmonized.var.index)
-    df = df.sort_values(by=["auc"], ascending=False)
-    auc_df = df.iloc[0:50]
-    genes = auc_df[auc_df["auc"] >= 0.75].index.values
+for clust in sorted(set(t_cell_harmonized.obs["leiden_labels"]), key = int) :
+    df_dict = {"auc": t_cell_harmonized.varm["de_res"]["auroc:{clust}".format(clust=clust)]}
+    df = pd.DataFrame(df_dict, index=t_cell_harmonized.var.index)
+    genes = df[df["auc"] >= 0.75].index.values
     top_genes[clust] = genes
 
 top_gene_df = pd.DataFrame(dict([(k,pd.Series(v)) for k,v in top_genes.items() ]))
@@ -212,30 +152,26 @@ top_gene_df = top_gene_df.rename(columns = {clust : "cluster_{clust}".format(clu
 top_gene_df = top_gene_df.replace(np.nan, "")
 ```
 
-<img src="figure_3_files/figure-markdown_github/DE_analysis-15.png" width="672" />
+<img src="figure_4_files/figure-markdown_github/DE_analysis-7.png" width="1152" />
 
 ``` r
 library(knitr)
 kable(reticulate::py$top_gene_df, caption = "genes with AUC > 0.75")
 ```
 
-<table style="width:100%;">
+<table>
 <caption>genes with AUC &gt; 0.75</caption>
 <colgroup>
-<col width="6%" />
-<col width="6%" />
-<col width="6%" />
-<col width="6%" />
-<col width="6%" />
-<col width="6%" />
-<col width="7%" />
-<col width="6%" />
-<col width="6%" />
-<col width="7%" />
-<col width="7%" />
-<col width="7%" />
-<col width="7%" />
-<col width="7%" />
+<col width="9%" />
+<col width="9%" />
+<col width="9%" />
+<col width="9%" />
+<col width="9%" />
+<col width="9%" />
+<col width="9%" />
+<col width="9%" />
+<col width="9%" />
+<col width="10%" />
 </colgroup>
 <thead>
 <tr class="header">
@@ -249,808 +185,148 @@ kable(reticulate::py$top_gene_df, caption = "genes with AUC > 0.75")
 <th align="left">cluster_8</th>
 <th align="left">cluster_9</th>
 <th align="left">cluster_10</th>
-<th align="left">cluster_11</th>
-<th align="left">cluster_12</th>
-<th align="left">cluster_13</th>
-<th align="left">cluster_14</th>
 </tr>
 </thead>
 <tbody>
 <tr class="odd">
-<td align="left">VSIR</td>
-<td align="left"></td>
-<td align="left">CD1C</td>
-<td align="left">GZMB</td>
-<td align="left">CTSB</td>
-<td align="left">NAMPT</td>
-<td align="left">APOC1</td>
-<td align="left">A2M</td>
-<td align="left">CD83</td>
-<td align="left">CLEC9A</td>
-<td align="left">GBP1</td>
-<td align="left">PPP1R14A</td>
-<td align="left">FTL</td>
-<td align="left">H2AFZ</td>
-</tr>
-<tr class="even">
-<td align="left">FGL2</td>
-<td align="left"></td>
-<td align="left">CD1E</td>
-<td align="left">JCHAIN</td>
-<td align="left">CSTB</td>
-<td align="left">SRGN</td>
-<td align="left">FTL</td>
-<td align="left">CD74</td>
-<td align="left">BIRC3</td>
-<td align="left">WDFY4</td>
-<td align="left">STAT1</td>
-<td align="left">SEPT6</td>
-<td align="left">FTH1</td>
-<td align="left">STMN1</td>
-</tr>
-<tr class="odd">
-<td align="left">AOAH</td>
-<td align="left"></td>
-<td align="left">CIITA</td>
-<td align="left">TCF4</td>
-<td align="left">CTSD</td>
-<td align="left">NEAT1</td>
-<td align="left">FABP4</td>
-<td align="left">HLA-DQA1</td>
-<td align="left">LAMP3</td>
-<td align="left">SNX3</td>
-<td align="left">C15orf48</td>
-<td align="left">LTB</td>
-<td align="left">APOC1</td>
-<td align="left">HMGB1</td>
-</tr>
-<tr class="even">
-<td align="left">CPVL</td>
-<td align="left"></td>
-<td align="left">TLR10</td>
-<td align="left">UGCG</td>
-<td align="left">LGALS3</td>
-<td align="left">PLAUR</td>
-<td align="left">MARCO</td>
-<td align="left">HLA-DPA1</td>
-<td align="left">NFKB1</td>
-<td align="left">IRF8</td>
-<td align="left">WARS</td>
-<td align="left">C12orf75</td>
-<td align="left">FABP4</td>
-<td align="left">TUBA1B</td>
-</tr>
-<tr class="odd">
-<td align="left">MS4A6A</td>
-<td align="left"></td>
-<td align="left">CKLF</td>
-<td align="left">ITM2C</td>
-<td align="left">CD63</td>
-<td align="left">SLC2A3</td>
-<td align="left">GCHFR</td>
-<td align="left">C1QC</td>
-<td align="left">DAPP1</td>
-<td align="left">NAAA</td>
-<td align="left">LAP3</td>
-<td align="left">CDH1</td>
-<td align="left">CTSD</td>
-<td align="left">PTMA</td>
-</tr>
-<tr class="even">
-<td align="left">SORL1</td>
-<td align="left"></td>
-<td align="left">PPA1</td>
-<td align="left">IGKC</td>
-<td align="left">FABP5</td>
-<td align="left">SAT1</td>
-<td align="left">C1QA</td>
-<td align="left">HLA-DQB1</td>
-<td align="left">REL</td>
-<td align="left">ID2</td>
-<td align="left">GBP4</td>
-<td align="left">NKG7</td>
-<td align="left">CSTB</td>
-<td align="left">PCLAF</td>
-</tr>
-<tr class="odd">
-<td align="left">TMEM176B</td>
-<td align="left"></td>
-<td align="left">HLA-DQA1</td>
-<td align="left">PPP1R14B</td>
-<td align="left">CTSL</td>
-<td align="left">IL1RN</td>
-<td align="left">C1QB</td>
-<td align="left">HLA-DRB1</td>
-<td align="left">CCR7</td>
-<td align="left">CPNE3</td>
-<td align="left">GBP5</td>
-<td align="left">AXL</td>
-<td align="left">MARCO</td>
-<td align="left">HMGB2</td>
-</tr>
-<tr class="even">
-<td align="left">MNDA</td>
-<td align="left"></td>
-<td align="left">PPP1R14A</td>
-<td align="left">BCL11A</td>
-<td align="left">BRI3</td>
-<td align="left">FTH1</td>
-<td align="left">FTH1</td>
-<td align="left">C1QA</td>
-<td align="left">BASP1</td>
-<td align="left">SHTN1</td>
-<td align="left">GBP2</td>
-<td align="left">MYL12A</td>
-<td align="left">LGALS3</td>
-<td align="left">TYMS</td>
-</tr>
-<tr class="odd">
-<td align="left">CLEC10A</td>
-<td align="left"></td>
-<td align="left">ACTG1</td>
-<td align="left">IRF7</td>
-<td align="left">GPNMB</td>
-<td align="left">VEGFA</td>
-<td align="left">APOE</td>
-<td align="left">C1QB</td>
+<td align="left">CD8A</td>
+<td align="left">RPS8</td>
+<td align="left">MALAT1</td>
 <td align="left">IL7R</td>
-<td align="left">CST3</td>
-<td align="left">SOD2</td>
-<td align="left">CD2</td>
-<td align="left">APOE</td>
-<td align="left">TUBB</td>
+<td align="left">GNLY</td>
+<td align="left">TNFRSF4</td>
+<td align="left">GZMK</td>
+<td align="left">TNFRSF18</td>
+<td align="left">SRGN</td>
+<td align="left">ISG15</td>
 </tr>
 <tr class="even">
-<td align="left">F13A1</td>
 <td align="left"></td>
-<td align="left">CD74</td>
-<td align="left">CCDC50</td>
-<td align="left">PSAP</td>
-<td align="left">CEBPB</td>
-<td align="left">MS4A7</td>
-<td align="left">ITM2B</td>
-<td align="left">CST7</td>
-<td align="left">CADM1</td>
-<td align="left">CXCL10</td>
-<td align="left">ARL4C</td>
+<td align="left">RPL32</td>
 <td align="left"></td>
-<td align="left">DUT</td>
+<td align="left">KLRB1</td>
+<td align="left">HOPX</td>
+<td align="left">TMSB10</td>
+<td align="left"></td>
+<td align="left">TNFRSF4</td>
+<td align="left">CD69</td>
+<td align="left">IFI6</td>
 </tr>
 <tr class="odd">
-<td align="left">GGT5</td>
 <td align="left"></td>
-<td align="left">HLA-DPA1</td>
-<td align="left">TSPAN13</td>
-<td align="left">SDCBP</td>
-<td align="left">MCL1</td>
-<td align="left">MSR1</td>
-<td align="left">HLA-DMB</td>
-<td align="left">CCL22</td>
-<td align="left">CD226</td>
-<td align="left">PARP14</td>
-<td align="left">TCF4</td>
+<td align="left">RPL34</td>
 <td align="left"></td>
-<td align="left">CKS1B</td>
+<td align="left">RPLP1</td>
+<td align="left">KLRD1</td>
+<td align="left">LTB</td>
+<td align="left"></td>
+<td align="left">CHDH</td>
+<td align="left">CCL4</td>
+<td align="left">IFI44L</td>
 </tr>
 <tr class="even">
-<td align="left">AIF1</td>
 <td align="left"></td>
-<td align="left">SLC38A1</td>
-<td align="left">MZB1</td>
-<td align="left">CEBPB</td>
-<td align="left">BTG1</td>
-<td align="left">TFRC</td>
-<td align="left">HLA-DRA</td>
-<td align="left">CFLAR</td>
-<td align="left">TAP1</td>
-<td align="left">EPSTI1</td>
-<td align="left">SULF2</td>
-<td align="left"></td>
-<td align="left">HMGN2</td>
-</tr>
-<tr class="odd">
-<td align="left">VASH1</td>
-<td align="left"></td>
-<td align="left">DENND1B</td>
-<td align="left">IRF8</td>
-<td align="left">ATP6V1F</td>
-<td align="left">TIMP1</td>
-<td align="left">LGALS3</td>
-<td align="left">HLA-DPB1</td>
-<td align="left">GPR157</td>
-<td align="left">HLA-DPA1</td>
-<td align="left">TYMP</td>
-<td align="left">LGMN</td>
-<td align="left"></td>
-<td align="left">PCNA</td>
-</tr>
-<tr class="even">
-<td align="left">JAML</td>
-<td align="left"></td>
-<td align="left">LIMD2</td>
-<td align="left">SMPD3</td>
-<td align="left">FTH1</td>
-<td align="left">METRNL</td>
-<td align="left">CTSD</td>
-<td align="left">AXL</td>
-<td align="left">MARCKS</td>
-<td align="left">RAB7B</td>
-<td align="left">NAMPT</td>
-<td align="left">HINT1</td>
-<td align="left"></td>
-<td align="left">DEK</td>
-</tr>
-<tr class="odd">
-<td align="left">CD93</td>
-<td align="left"></td>
-<td align="left">KCNK6</td>
-<td align="left">IL3RA</td>
-<td align="left">EMP3</td>
-<td align="left">DUSP1</td>
-<td align="left">NUPR1</td>
-<td align="left">MS4A6A</td>
-<td align="left">NR4A3</td>
-<td align="left">ENPP1</td>
-<td align="left">TAP1</td>
-<td align="left">BID</td>
-<td align="left"></td>
-<td align="left">TK1</td>
-</tr>
-<tr class="even">
-<td align="left">NAIP</td>
-<td align="left"></td>
-<td align="left">HLA-DPB1</td>
-<td align="left">C12orf75</td>
-<td align="left">ANXA2</td>
-<td align="left">OLR1</td>
-<td align="left">SERPING1</td>
-<td align="left">FGL2</td>
-<td align="left">IL4I1</td>
-<td align="left">CPVL</td>
-<td align="left">BCL2A1</td>
-<td align="left">ATF5</td>
-<td align="left"></td>
-<td align="left">GAPDH</td>
-</tr>
-<tr class="odd">
-<td align="left">GIMAP7</td>
-<td align="left"></td>
-<td align="left">NDRG2</td>
-<td align="left">CLIC3</td>
-<td align="left">ANXA5</td>
-<td align="left">ATP13A3</td>
-<td align="left">TSPO</td>
-<td align="left"></td>
-<td align="left">BTG1</td>
-<td align="left">BATF3</td>
-<td align="left">PSME2</td>
-<td align="left">PLAC8</td>
-<td align="left"></td>
-<td align="left">MKI67</td>
-</tr>
-<tr class="even">
-<td align="left">SIGLEC10</td>
-<td align="left"></td>
-<td align="left">HLA-DQB1</td>
-<td align="left">PLAC8</td>
-<td align="left">GSTO1</td>
-<td align="left">SGK1</td>
-<td align="left">SCD</td>
-<td align="left"></td>
-<td align="left">GPR183</td>
-<td align="left">HLA-DPB1</td>
-<td align="left">APOL6</td>
 <td align="left">RPS23</td>
 <td align="left"></td>
 <td align="left"></td>
+<td align="left">KLRC1</td>
+<td align="left">IL2RA</td>
+<td align="left"></td>
+<td align="left">IL17RB</td>
+<td align="left">CCL4L2</td>
+<td align="left">RSAD2</td>
 </tr>
 <tr class="odd">
-<td align="left">CEBPA</td>
-<td align="left"></td>
-<td align="left">LRRK1</td>
-<td align="left">MALAT1</td>
-<td align="left">SGK1</td>
-<td align="left">CD44</td>
-<td align="left">MGST3</td>
-<td align="left"></td>
-<td align="left">ETV3</td>
-<td align="left">XCR1</td>
-<td align="left"></td>
-<td align="left">TUBA1A</td>
-<td align="left"></td>
-<td align="left"></td>
-</tr>
-<tr class="even">
-<td align="left">COTL1</td>
-<td align="left"></td>
-<td align="left">GDI2</td>
-<td align="left">SEC61B</td>
-<td align="left">SLC11A1</td>
-<td align="left">SOD2</td>
-<td align="left">CSTB</td>
-<td align="left"></td>
-<td align="left">CSF2RA</td>
-<td align="left">IDO1</td>
-<td align="left"></td>
-<td align="left">LRRFIP1</td>
-<td align="left"></td>
-<td align="left"></td>
-</tr>
-<tr class="odd">
-<td align="left"></td>
-<td align="left"></td>
-<td align="left">RUNX3</td>
-<td align="left">APP</td>
-<td align="left">ASAH1</td>
-<td align="left">FOSL2</td>
-<td align="left">AC026369.3</td>
-<td align="left"></td>
-<td align="left">EIF1</td>
-<td align="left">HLA-DQA1</td>
-<td align="left"></td>
-<td align="left">CSF2RB</td>
-<td align="left"></td>
-<td align="left"></td>
-</tr>
-<tr class="even">
-<td align="left"></td>
-<td align="left"></td>
-<td align="left"></td>
-<td align="left">SELL</td>
-<td align="left">PDXK</td>
-<td align="left">HIF1A</td>
-<td align="left">CES1</td>
-<td align="left"></td>
-<td align="left">CMTM6</td>
-<td align="left">CD74</td>
-<td align="left"></td>
-<td align="left">SPIB</td>
-<td align="left"></td>
-<td align="left"></td>
-</tr>
-<tr class="odd">
-<td align="left"></td>
-<td align="left"></td>
-<td align="left"></td>
-<td align="left">SERPINF1</td>
-<td align="left">PLA2G7</td>
-<td align="left">H3F3B</td>
-<td align="left">LTA4H</td>
-<td align="left"></td>
-<td align="left">CDKN1A</td>
-<td align="left">BASP1</td>
-<td align="left"></td>
-<td align="left">RAB11FIP1</td>
-<td align="left"></td>
-<td align="left"></td>
-</tr>
-<tr class="even">
-<td align="left"></td>
-<td align="left"></td>
-<td align="left"></td>
-<td align="left">LILRA4</td>
-<td align="left">FTL</td>
-<td align="left">LITAF</td>
-<td align="left">GLRX</td>
-<td align="left"></td>
-<td align="left">PNRC1</td>
-<td align="left">CCND1</td>
-<td align="left"></td>
-<td align="left">MRPS6</td>
-<td align="left"></td>
-<td align="left"></td>
-</tr>
-<tr class="odd">
-<td align="left"></td>
-<td align="left"></td>
-<td align="left"></td>
-<td align="left">MAP1A</td>
-<td align="left">AQP9</td>
-<td align="left">GK</td>
-<td align="left">CYP27A1</td>
 <td align="left"></td>
 <td align="left">EEF1A1</td>
-<td align="left">CLNK</td>
-<td align="left"></td>
-<td align="left">CRYBG1</td>
 <td align="left"></td>
 <td align="left"></td>
+<td align="left">CD63</td>
+<td align="left"></td>
+<td align="left"></td>
+<td align="left">IL13</td>
+<td align="left"></td>
+<td align="left">EIF2AK2</td>
 </tr>
 <tr class="even">
-<td align="left"></td>
-<td align="left"></td>
-<td align="left"></td>
-<td align="left">DERL3</td>
-<td align="left">LAMP1</td>
-<td align="left"></td>
-<td align="left">C1QC</td>
-<td align="left"></td>
-<td align="left"></td>
-<td align="left">HLA-DQB1</td>
-<td align="left"></td>
-<td align="left">PLP2</td>
-<td align="left"></td>
-<td align="left"></td>
-</tr>
-<tr class="odd">
-<td align="left"></td>
-<td align="left"></td>
-<td align="left"></td>
-<td align="left">ALOX5AP</td>
-<td align="left">GLUL</td>
-<td align="left"></td>
-<td align="left">GPNMB</td>
-<td align="left"></td>
-<td align="left"></td>
-<td align="left">C1orf54</td>
-<td align="left"></td>
-<td align="left">SYNGR2</td>
-<td align="left"></td>
-<td align="left"></td>
-</tr>
-<tr class="even">
-<td align="left"></td>
-<td align="left"></td>
-<td align="left"></td>
-<td align="left">SCT</td>
-<td align="left">S100A11</td>
-<td align="left"></td>
-<td align="left">CD52</td>
-<td align="left"></td>
-<td align="left"></td>
-<td align="left">RAB11FIP1</td>
-<td align="left"></td>
-<td align="left">S100A10</td>
-<td align="left"></td>
-<td align="left"></td>
-</tr>
-<tr class="odd">
-<td align="left"></td>
-<td align="left"></td>
-<td align="left"></td>
-<td align="left">SPCS1</td>
-<td align="left">CD9</td>
-<td align="left"></td>
-<td align="left">FABP5</td>
-<td align="left"></td>
-<td align="left"></td>
-<td align="left">ASAP1</td>
-<td align="left"></td>
-<td align="left">NFAT5</td>
-<td align="left"></td>
-<td align="left"></td>
-</tr>
-<tr class="even">
-<td align="left"></td>
-<td align="left"></td>
-<td align="left"></td>
-<td align="left">HERPUD1</td>
-<td align="left">CD44</td>
-<td align="left"></td>
-<td align="left">PPARG</td>
-<td align="left"></td>
-<td align="left"></td>
-<td align="left">SLAMF7</td>
-<td align="left"></td>
-<td align="left">ACTG1</td>
-<td align="left"></td>
-<td align="left"></td>
-</tr>
-<tr class="odd">
-<td align="left"></td>
-<td align="left"></td>
-<td align="left"></td>
-<td align="left">SPIB</td>
-<td align="left">SH3BGRL3</td>
-<td align="left"></td>
-<td align="left">TXNIP</td>
-<td align="left"></td>
-<td align="left"></td>
-<td align="left">ICAM3</td>
-<td align="left"></td>
-<td align="left">CCND3</td>
-<td align="left"></td>
-<td align="left"></td>
-</tr>
-<tr class="even">
-<td align="left"></td>
-<td align="left"></td>
-<td align="left"></td>
-<td align="left">CYB561A3</td>
-<td align="left">MGAT1</td>
-<td align="left"></td>
-<td align="left">LGALS3BP</td>
-<td align="left"></td>
-<td align="left"></td>
-<td align="left">FNBP1</td>
-<td align="left"></td>
-<td align="left">SUSD1</td>
-<td align="left"></td>
-<td align="left"></td>
-</tr>
-<tr class="odd">
-<td align="left"></td>
-<td align="left"></td>
-<td align="left"></td>
-<td align="left">LINC00996</td>
-<td align="left">VIM</td>
-<td align="left"></td>
-<td align="left">FAM89A</td>
-<td align="left"></td>
-<td align="left"></td>
-<td align="left">ARF6</td>
-<td align="left"></td>
-<td align="left">ALOX5AP</td>
-<td align="left"></td>
-<td align="left"></td>
-</tr>
-<tr class="even">
-<td align="left"></td>
-<td align="left"></td>
-<td align="left"></td>
-<td align="left">LTB</td>
-<td align="left">PLIN2</td>
-<td align="left"></td>
-<td align="left">S100A11</td>
-<td align="left"></td>
-<td align="left"></td>
-<td align="left">CST7</td>
-<td align="left"></td>
-<td align="left">SEC61B</td>
-<td align="left"></td>
-<td align="left"></td>
-</tr>
-<tr class="odd">
-<td align="left"></td>
-<td align="left"></td>
-<td align="left"></td>
-<td align="left">PLD4</td>
-<td align="left">FBP1</td>
-<td align="left"></td>
-<td align="left">CFD</td>
-<td align="left"></td>
-<td align="left"></td>
-<td align="left">RAB32</td>
-<td align="left"></td>
-<td align="left">UGCG</td>
-<td align="left"></td>
-<td align="left"></td>
-</tr>
-<tr class="even">
-<td align="left"></td>
-<td align="left"></td>
-<td align="left"></td>
-<td align="left">CLEC4C</td>
-<td align="left">DAB2</td>
-<td align="left"></td>
-<td align="left">ALDH2</td>
-<td align="left"></td>
-<td align="left"></td>
-<td align="left">HLA-DRB1</td>
-<td align="left"></td>
-<td align="left">INPP4A</td>
-<td align="left"></td>
-<td align="left"></td>
-</tr>
-<tr class="odd">
-<td align="left"></td>
-<td align="left"></td>
-<td align="left"></td>
-<td align="left">STMN1</td>
-<td align="left">CD68</td>
-<td align="left"></td>
-<td align="left">FBP1</td>
-<td align="left"></td>
-<td align="left"></td>
-<td align="left">ACTG1</td>
-<td align="left"></td>
-<td align="left">RASSF5</td>
-<td align="left"></td>
-<td align="left"></td>
-</tr>
-<tr class="even">
-<td align="left"></td>
-<td align="left"></td>
-<td align="left"></td>
-<td align="left">CD2AP</td>
-<td align="left">CD163</td>
-<td align="left"></td>
-<td align="left">S100A6</td>
-<td align="left"></td>
-<td align="left"></td>
-<td align="left">DENND1B</td>
-<td align="left"></td>
-<td align="left"></td>
-<td align="left"></td>
-<td align="left"></td>
-</tr>
-<tr class="odd">
-<td align="left"></td>
-<td align="left"></td>
-<td align="left"></td>
-<td align="left">SLC15A4</td>
-<td align="left">C15orf48</td>
-<td align="left"></td>
-<td align="left">VSIG4</td>
-<td align="left"></td>
-<td align="left"></td>
-<td align="left">RGCC</td>
-<td align="left"></td>
-<td align="left"></td>
-<td align="left"></td>
-<td align="left"></td>
-</tr>
-<tr class="even">
-<td align="left"></td>
-<td align="left"></td>
-<td align="left"></td>
-<td align="left">PMEPA1</td>
-<td align="left">S100A10</td>
-<td align="left"></td>
-<td align="left">ACP5</td>
-<td align="left"></td>
-<td align="left"></td>
-<td align="left">BCL6</td>
-<td align="left"></td>
-<td align="left"></td>
-<td align="left"></td>
-<td align="left"></td>
-</tr>
-<tr class="odd">
-<td align="left"></td>
-<td align="left"></td>
-<td align="left"></td>
-<td align="left">CCDC186</td>
-<td align="left">NCF2</td>
-<td align="left"></td>
-<td align="left">FCGR3A</td>
-<td align="left"></td>
-<td align="left"></td>
-<td align="left">HLA-DOB</td>
-<td align="left"></td>
-<td align="left"></td>
-<td align="left"></td>
-<td align="left"></td>
-</tr>
-<tr class="even">
-<td align="left"></td>
-<td align="left"></td>
-<td align="left"></td>
-<td align="left">FCHSD2</td>
-<td align="left">CCL2</td>
-<td align="left"></td>
-<td align="left">CD81</td>
-<td align="left"></td>
-<td align="left"></td>
-<td align="left">HLA-DRB5</td>
-<td align="left"></td>
-<td align="left"></td>
-<td align="left"></td>
-<td align="left"></td>
-</tr>
-<tr class="odd">
-<td align="left"></td>
-<td align="left"></td>
-<td align="left"></td>
-<td align="left">ZFAT</td>
-<td align="left"></td>
-<td align="left"></td>
-<td align="left">PCOLCE2</td>
-<td align="left"></td>
-<td align="left"></td>
-<td align="left">RGS10</td>
-<td align="left"></td>
-<td align="left"></td>
-<td align="left"></td>
-<td align="left"></td>
-</tr>
-<tr class="even">
-<td align="left"></td>
-<td align="left"></td>
-<td align="left"></td>
-<td align="left">MPEG1</td>
-<td align="left"></td>
-<td align="left"></td>
-<td align="left">ALDH1A1</td>
-<td align="left"></td>
-<td align="left"></td>
-<td align="left">DNASE1L3</td>
-<td align="left"></td>
-<td align="left"></td>
-<td align="left"></td>
-<td align="left"></td>
-</tr>
-<tr class="odd">
-<td align="left"></td>
-<td align="left"></td>
-<td align="left"></td>
-<td align="left">PLP2</td>
-<td align="left"></td>
-<td align="left"></td>
-<td align="left">TYROBP</td>
-<td align="left"></td>
-<td align="left"></td>
-<td align="left">DST</td>
-<td align="left"></td>
-<td align="left"></td>
-<td align="left"></td>
-<td align="left"></td>
-</tr>
-<tr class="even">
-<td align="left"></td>
-<td align="left"></td>
-<td align="left"></td>
-<td align="left">OFD1</td>
-<td align="left"></td>
-<td align="left"></td>
-<td align="left">TREM1</td>
-<td align="left"></td>
-<td align="left"></td>
-<td align="left">ZNF366</td>
-<td align="left"></td>
-<td align="left"></td>
-<td align="left"></td>
-<td align="left"></td>
-</tr>
-<tr class="odd">
-<td align="left"></td>
-<td align="left"></td>
-<td align="left"></td>
-<td align="left">NUCB2</td>
-<td align="left"></td>
-<td align="left"></td>
-<td align="left">PLIN2</td>
-<td align="left"></td>
-<td align="left"></td>
-<td align="left">LGALS2</td>
-<td align="left"></td>
-<td align="left"></td>
-<td align="left"></td>
-<td align="left"></td>
-</tr>
-<tr class="even">
-<td align="left"></td>
-<td align="left"></td>
-<td align="left"></td>
-<td align="left">SELENOS</td>
-<td align="left"></td>
-<td align="left"></td>
-<td align="left">CTSL</td>
-<td align="left"></td>
-<td align="left"></td>
-<td align="left">CCSER1</td>
-<td align="left"></td>
-<td align="left"></td>
-<td align="left"></td>
-<td align="left"></td>
-</tr>
-<tr class="odd">
-<td align="left"></td>
-<td align="left"></td>
 <td align="left"></td>
 <td align="left">RPS12</td>
 <td align="left"></td>
 <td align="left"></td>
-<td align="left">PLA2G16</td>
+<td align="left">CCL5</td>
 <td align="left"></td>
 <td align="left"></td>
-<td align="left">HLA-DRA</td>
+<td align="left">HSP90AB1</td>
+<td align="left"></td>
+<td align="left">HERC5</td>
+</tr>
+<tr class="odd">
+<td align="left"></td>
+<td align="left">RPL39</td>
 <td align="left"></td>
 <td align="left"></td>
 <td align="left"></td>
 <td align="left"></td>
+<td align="left"></td>
+<td align="left">GATA3</td>
+<td align="left"></td>
+<td align="left">LY6E</td>
 </tr>
 <tr class="even">
 <td align="left"></td>
+<td align="left">RPL10</td>
 <td align="left"></td>
 <td align="left"></td>
-<td align="left">SEL1L3</td>
 <td align="left"></td>
 <td align="left"></td>
-<td align="left">IFI6</td>
+<td align="left"></td>
+<td align="left">RPLP0</td>
+<td align="left"></td>
+<td align="left">IFIT1</td>
+</tr>
+<tr class="odd">
+<td align="left"></td>
+<td align="left">RPL30</td>
 <td align="left"></td>
 <td align="left"></td>
-<td align="left">CAMK2D</td>
+<td align="left"></td>
+<td align="left"></td>
+<td align="left"></td>
+<td align="left"></td>
+<td align="left"></td>
+<td align="left">ISG20</td>
+</tr>
+<tr class="even">
+<td align="left"></td>
+<td align="left">RPS6</td>
+<td align="left"></td>
+<td align="left"></td>
+<td align="left"></td>
+<td align="left"></td>
+<td align="left"></td>
+<td align="left"></td>
+<td align="left"></td>
+<td align="left">XAF1</td>
+</tr>
+<tr class="odd">
+<td align="left"></td>
+<td align="left">TPT1</td>
+<td align="left"></td>
+<td align="left"></td>
+<td align="left"></td>
+<td align="left"></td>
+<td align="left"></td>
+<td align="left"></td>
+<td align="left"></td>
+<td align="left">MX1</td>
+</tr>
+<tr class="even">
+<td align="left"></td>
+<td align="left">RPL13</td>
+<td align="left"></td>
+<td align="left"></td>
+<td align="left"></td>
+<td align="left"></td>
 <td align="left"></td>
 <td align="left"></td>
 <td align="left"></td>
@@ -1065,9 +341,9 @@ We can see from the above AUROC genes, that we don't have a strong enough signal
 # import neals_python_functions as nealsucks
 # # Read in the raw count data
 # raw_data = pg.read_input("/home/nealpsmith/projects/medoff/data/all_data.h5sc")
-# raw_data = raw_data[mps_harmonized.obs_names]
-# raw_data = raw_data[:, mps_harmonized.var_names]
-# raw_data.obs = mps_harmonized.obs[["leiden_labels", "Channel"]]
+# raw_data = raw_data[t_cell_harmonized.obs_names]
+# raw_data = raw_data[:, t_cell_harmonized.var_names]
+# raw_data.obs = t_cell_harmonized.obs[["leiden_labels", "Channel"]]
 #
 # # Create the matrix
 # raw_sum_dict = {}
@@ -1091,7 +367,7 @@ We can see from the above AUROC genes, that we don't have a strong enough signal
 #
 # clust_df = pd.DataFrame(index=count_mtx.index)
 # # Lets run pseudobulk on clusters
-# for clust in set(mps_harmonized.obs["leiden_labels"]):
+# for clust in set(t_cell_harmonized.obs["leiden_labels"]):
 #     print(clust)
 #     meta_temp = meta_df.copy()
 #     meta_temp["isclust"] = ["yes" if cluster == clust else "no" for cluster in meta_temp["cluster"]]
@@ -1105,10 +381,10 @@ We can see from the above AUROC genes, that we don't have a strong enough signal
 #     clust_df = clust_df.join(res[["pvalue"]].rename(
 #         columns={"pvalue": "pseudobulk_p_val:{clust}".format(clust=clust)}))
 
-de_res = mps_harmonized.varm["de_res"]
+de_res = t_cell_harmonized.varm["de_res"]
 # de_res = pd.DataFrame(de_res, index=res.index)
 # de_res = de_res.join(clust_df)
-de_res = pd.DataFrame(de_res, index = mps_harmonized.var_names)
+de_res = pd.DataFrame(de_res, index = t_cell_harmonized.var_names)
 de_res = de_res.fillna(0)
 names = [name for name in de_res.columns if name.startswith("pseudobulk_p_val")]
 
@@ -1118,23 +394,23 @@ for name in names :
     de_res["pseudobulk_q_val:{clust}".format(clust = clust)] = stats.fdrcorrection(de_res[name])[1]
 
 de_res = de_res.to_records(index=False)
-mps_harmonized.varm["de_res"] = de_res
+t_cell_harmonized.varm["de_res"] = de_res
 
 top_genes = {}
-for clust in sorted(set(mps_harmonized.obs["leiden_labels"]), key = int) :
-    df_dict = {"auc": mps_harmonized.varm["de_res"]["auroc:{clust}".format(clust=clust)],
-               "pseudo_q" : mps_harmonized.varm["de_res"]["pseudobulk_q_val:{clust}".format(clust = clust)],
-               "pseudo_p" : mps_harmonized.varm["de_res"]["pseudobulk_p_val:{clust}".format(clust = clust)],
-               "pseudo_log_fc" : mps_harmonized.varm["de_res"]["pseudobulk_log_fold_change:{clust}".format(clust = clust)],
-               "percent" : mps_harmonized.varm["de_res"]["percentage:{clust}".format(clust = clust)]}
-    df = pd.DataFrame(df_dict, index=mps_harmonized.var.index)
+for clust in sorted(set(t_cell_harmonized.obs["leiden_labels"]), key = int) :
+    df_dict = {"auc": t_cell_harmonized.varm["de_res"]["auroc:{clust}".format(clust=clust)],
+               "pseudo_q" : t_cell_harmonized.varm["de_res"]["pseudobulk_q_val:{clust}".format(clust = clust)],
+               "pseudo_p" : t_cell_harmonized.varm["de_res"]["pseudobulk_p_val:{clust}".format(clust = clust)],
+               "pseudo_log_fc" : t_cell_harmonized.varm["de_res"]["pseudobulk_log_fold_change:{clust}".format(clust = clust)],
+               "percent" : t_cell_harmonized.varm["de_res"]["percentage:{clust}".format(clust = clust)]}
+    df = pd.DataFrame(df_dict, index=t_cell_harmonized.var.index)
     # Lets limit to genes where at least 20% cells express it
     df = df[df["percent"] > 20]
-    df = df.sort_values(by=["auc"], ascending=False)
-    auc_df = df.iloc[0:50]
+    # df = df.sort_values(by=["auc"], ascending=False)
+    # df = df.iloc[0:15]
     # genes = df.index.values
     # Get top 50 genes (first by AUC, then by pseudobulk)
-    genes = auc_df[auc_df["auc"] >= 0.75].index.values
+    genes = df[df["auc"] >= 0.75].index.values
 
     n_from_pseudo = 50 - len(genes)
     if n_from_pseudo > 0 :
@@ -1153,7 +429,7 @@ top_gene_df = top_gene_df.rename(columns = {clust : "cluster_{clust}".format(clu
 top_gene_df = top_gene_df.replace(np.nan, "")
 ```
 
-<img src="figure_3_files/figure-markdown_github/pseudobulk-1.png" width="672" />
+<img src="figure_4_files/figure-markdown_github/pseudobulk-1.png" width="1152" />
 
 ``` r
 kable(reticulate::py$top_gene_df, caption = "genes with AUC> 0.75 or pseudo q < 0.05")
@@ -1162,20 +438,16 @@ kable(reticulate::py$top_gene_df, caption = "genes with AUC> 0.75 or pseudo q < 
 <table>
 <caption>genes with AUC&gt; 0.75 or pseudo q &lt; 0.05</caption>
 <colgroup>
-<col width="7%" />
-<col width="6%" />
-<col width="7%" />
-<col width="6%" />
-<col width="6%" />
-<col width="6%" />
-<col width="7%" />
-<col width="7%" />
-<col width="6%" />
-<col width="7%" />
-<col width="7%" />
-<col width="7%" />
-<col width="7%" />
-<col width="7%" />
+<col width="9%" />
+<col width="9%" />
+<col width="11%" />
+<col width="9%" />
+<col width="9%" />
+<col width="11%" />
+<col width="9%" />
+<col width="9%" />
+<col width="9%" />
+<col width="10%" />
 </colgroup>
 <thead>
 <tr class="header">
@@ -1189,812 +461,608 @@ kable(reticulate::py$top_gene_df, caption = "genes with AUC> 0.75 or pseudo q < 
 <th align="left">cluster_8</th>
 <th align="left">cluster_9</th>
 <th align="left">cluster_10</th>
-<th align="left">cluster_11</th>
-<th align="left">cluster_12</th>
-<th align="left">cluster_13</th>
-<th align="left">cluster_14</th>
 </tr>
 </thead>
 <tbody>
 <tr class="odd">
-<td align="left">VSIR</td>
-<td align="left">SCGB1A1</td>
-<td align="left">CD1C</td>
-<td align="left">GZMB</td>
-<td align="left">CTSB</td>
-<td align="left">NAMPT</td>
-<td align="left">APOC1</td>
-<td align="left">A2M</td>
-<td align="left">CD83</td>
-<td align="left">CLEC9A</td>
-<td align="left">GBP1</td>
-<td align="left">PPP1R14A</td>
-<td align="left">FTL</td>
-<td align="left">H2AFZ</td>
-</tr>
-<tr class="even">
-<td align="left">FGL2</td>
-<td align="left">SCGB3A1</td>
-<td align="left">CD1E</td>
-<td align="left">JCHAIN</td>
-<td align="left">CSTB</td>
-<td align="left">SRGN</td>
-<td align="left">FTL</td>
-<td align="left">CD74</td>
-<td align="left">BIRC3</td>
-<td align="left">WDFY4</td>
-<td align="left">STAT1</td>
-<td align="left">SEPT6</td>
-<td align="left">FTH1</td>
-<td align="left">STMN1</td>
-</tr>
-<tr class="odd">
-<td align="left">AOAH</td>
-<td align="left">PKIB</td>
-<td align="left">CIITA</td>
-<td align="left">TCF4</td>
-<td align="left">CTSD</td>
-<td align="left">NEAT1</td>
-<td align="left">FABP4</td>
-<td align="left">HLA-DQA1</td>
-<td align="left">LAMP3</td>
-<td align="left">SNX3</td>
-<td align="left">C15orf48</td>
-<td align="left">LTB</td>
-<td align="left">APOC1</td>
-<td align="left">HMGB1</td>
-</tr>
-<tr class="even">
-<td align="left">CPVL</td>
-<td align="left">FCER1A</td>
-<td align="left">TLR10</td>
-<td align="left">UGCG</td>
-<td align="left">LGALS3</td>
-<td align="left">PLAUR</td>
-<td align="left">MARCO</td>
-<td align="left">HLA-DPA1</td>
-<td align="left">NFKB1</td>
-<td align="left">IRF8</td>
-<td align="left">WARS</td>
-<td align="left">C12orf75</td>
-<td align="left">FABP4</td>
-<td align="left">TUBA1B</td>
-</tr>
-<tr class="odd">
-<td align="left">MS4A6A</td>
-<td align="left">HLA-DQB2</td>
-<td align="left">CKLF</td>
-<td align="left">ITM2C</td>
-<td align="left">CD63</td>
-<td align="left">SLC2A3</td>
-<td align="left">GCHFR</td>
-<td align="left">C1QC</td>
-<td align="left">DAPP1</td>
-<td align="left">NAAA</td>
-<td align="left">LAP3</td>
-<td align="left">CDH1</td>
-<td align="left">CTSD</td>
-<td align="left">PTMA</td>
-</tr>
-<tr class="even">
-<td align="left">SORL1</td>
-<td align="left">ABI3</td>
-<td align="left">PPA1</td>
-<td align="left">IGKC</td>
-<td align="left">FABP5</td>
-<td align="left">SAT1</td>
-<td align="left">C1QA</td>
-<td align="left">HLA-DQB1</td>
-<td align="left">REL</td>
-<td align="left">ID2</td>
-<td align="left">GBP4</td>
-<td align="left">NKG7</td>
-<td align="left">CSTB</td>
-<td align="left">PCLAF</td>
-</tr>
-<tr class="odd">
-<td align="left">TMEM176B</td>
-<td align="left">TMEM14C</td>
-<td align="left">HLA-DQA1</td>
-<td align="left">PPP1R14B</td>
-<td align="left">CTSL</td>
-<td align="left">IL1RN</td>
-<td align="left">C1QB</td>
-<td align="left">HLA-DRB1</td>
-<td align="left">CCR7</td>
-<td align="left">CPNE3</td>
-<td align="left">GBP5</td>
-<td align="left">AXL</td>
-<td align="left">MARCO</td>
-<td align="left">HMGB2</td>
-</tr>
-<tr class="even">
-<td align="left">MNDA</td>
-<td align="left">YWHAH</td>
-<td align="left">PPP1R14A</td>
-<td align="left">BCL11A</td>
-<td align="left">BRI3</td>
-<td align="left">FTH1</td>
-<td align="left">FTH1</td>
-<td align="left">C1QA</td>
-<td align="left">BASP1</td>
-<td align="left">SHTN1</td>
-<td align="left">GBP2</td>
-<td align="left">MYL12A</td>
-<td align="left">LGALS3</td>
-<td align="left">TYMS</td>
-</tr>
-<tr class="odd">
-<td align="left">CLEC10A</td>
-<td align="left">IL18</td>
-<td align="left">ACTG1</td>
-<td align="left">IRF7</td>
-<td align="left">GPNMB</td>
-<td align="left">VEGFA</td>
-<td align="left">APOE</td>
-<td align="left">C1QB</td>
-<td align="left">IL7R</td>
-<td align="left">CST3</td>
-<td align="left">SOD2</td>
-<td align="left">CD2</td>
-<td align="left">APOE</td>
-<td align="left">TUBB</td>
-</tr>
-<tr class="even">
-<td align="left">F13A1</td>
-<td align="left">RAB32</td>
-<td align="left">CD74</td>
-<td align="left">CCDC50</td>
-<td align="left">PSAP</td>
-<td align="left">CEBPB</td>
-<td align="left">MS4A7</td>
-<td align="left">ITM2B</td>
-<td align="left">CST7</td>
-<td align="left">CADM1</td>
-<td align="left">CXCL10</td>
-<td align="left">ARL4C</td>
-<td align="left">NUPR1</td>
-<td align="left">DUT</td>
-</tr>
-<tr class="odd">
-<td align="left">GGT5</td>
-<td align="left">HLA-DPB1</td>
-<td align="left">HLA-DPA1</td>
-<td align="left">TSPAN13</td>
-<td align="left">SDCBP</td>
-<td align="left">MCL1</td>
-<td align="left">MSR1</td>
-<td align="left">HLA-DMB</td>
-<td align="left">CCL22</td>
-<td align="left">CD226</td>
-<td align="left">PARP14</td>
-<td align="left">TCF4</td>
-<td align="left">AC026369.3</td>
-<td align="left">CKS1B</td>
-</tr>
-<tr class="even">
-<td align="left">AIF1</td>
-<td align="left">RGS10</td>
-<td align="left">SLC38A1</td>
-<td align="left">MZB1</td>
-<td align="left">CEBPB</td>
-<td align="left">BTG1</td>
-<td align="left">TFRC</td>
-<td align="left">HLA-DRA</td>
-<td align="left">CFLAR</td>
-<td align="left">TAP1</td>
-<td align="left">EPSTI1</td>
-<td align="left">SULF2</td>
-<td align="left">MT2A</td>
-<td align="left">HMGN2</td>
-</tr>
-<tr class="odd">
-<td align="left">VASH1</td>
-<td align="left">CIB1</td>
-<td align="left">DENND1B</td>
-<td align="left">IRF8</td>
-<td align="left">ATP6V1F</td>
-<td align="left">TIMP1</td>
-<td align="left">LGALS3</td>
-<td align="left">HLA-DPB1</td>
-<td align="left">GPR157</td>
-<td align="left">HLA-DPA1</td>
-<td align="left">TYMP</td>
-<td align="left">LGMN</td>
-<td align="left">GCHFR</td>
-<td align="left">PCNA</td>
-</tr>
-<tr class="even">
-<td align="left">JAML</td>
-<td align="left">LST1</td>
-<td align="left">LIMD2</td>
-<td align="left">SMPD3</td>
-<td align="left">FTH1</td>
-<td align="left">METRNL</td>
-<td align="left">CTSD</td>
-<td align="left">AXL</td>
-<td align="left">MARCKS</td>
-<td align="left">RAB7B</td>
-<td align="left">NAMPT</td>
-<td align="left">HINT1</td>
-<td align="left">SMIM25</td>
-<td align="left">DEK</td>
-</tr>
-<tr class="odd">
-<td align="left">CD93</td>
-<td align="left">HLA-DPA1</td>
-<td align="left">KCNK6</td>
-<td align="left">IL3RA</td>
-<td align="left">EMP3</td>
-<td align="left">DUSP1</td>
-<td align="left">NUPR1</td>
-<td align="left">MS4A6A</td>
-<td align="left">NR4A3</td>
-<td align="left">ENPP1</td>
-<td align="left">TAP1</td>
-<td align="left">BID</td>
-<td align="left">SLC11A1</td>
-<td align="left">TK1</td>
-</tr>
-<tr class="even">
-<td align="left">NAIP</td>
-<td align="left">CLTB</td>
-<td align="left">HLA-DPB1</td>
-<td align="left">C12orf75</td>
-<td align="left">ANXA2</td>
-<td align="left">OLR1</td>
-<td align="left">SERPING1</td>
-<td align="left">FGL2</td>
-<td align="left">IL4I1</td>
-<td align="left">CPVL</td>
-<td align="left">BCL2A1</td>
-<td align="left">ATF5</td>
-<td align="left">FAM89A</td>
-<td align="left">GAPDH</td>
-</tr>
-<tr class="odd">
-<td align="left">GIMAP7</td>
-<td align="left">SMIM26</td>
-<td align="left">NDRG2</td>
-<td align="left">CLIC3</td>
-<td align="left">ANXA5</td>
-<td align="left">ATP13A3</td>
-<td align="left">TSPO</td>
-<td align="left">SLC40A1</td>
-<td align="left">BTG1</td>
-<td align="left">BATF3</td>
-<td align="left">PSME2</td>
-<td align="left">PLAC8</td>
-<td align="left">TGM2</td>
-<td align="left">MKI67</td>
-</tr>
-<tr class="even">
-<td align="left">SIGLEC10</td>
-<td align="left">ECHS1</td>
-<td align="left">HLA-DQB1</td>
-<td align="left">PLAC8</td>
-<td align="left">GSTO1</td>
-<td align="left">SGK1</td>
-<td align="left">SCD</td>
-<td align="left">CTTNBP2</td>
-<td align="left">GPR183</td>
-<td align="left">HLA-DPB1</td>
-<td align="left">APOL6</td>
-<td align="left">RPS23</td>
-<td align="left">PLIN2</td>
-<td align="left">TOP2A</td>
-</tr>
-<tr class="odd">
-<td align="left">CEBPA</td>
-<td align="left">RPL26</td>
-<td align="left">LRRK1</td>
+<td align="left">CD8A</td>
+<td align="left">RPS8</td>
 <td align="left">MALAT1</td>
-<td align="left">SGK1</td>
-<td align="left">CD44</td>
-<td align="left">MGST3</td>
-<td align="left">CLEC4F</td>
-<td align="left">ETV3</td>
-<td align="left">XCR1</td>
-<td align="left">CXCL11</td>
-<td align="left">TUBA1A</td>
-<td align="left">TFRC</td>
-<td align="left">UBE2C</td>
-</tr>
-<tr class="even">
-<td align="left">COTL1</td>
-<td align="left">CLNS1A</td>
-<td align="left">GDI2</td>
-<td align="left">SEC61B</td>
-<td align="left">SLC11A1</td>
-<td align="left">SOD2</td>
-<td align="left">CSTB</td>
-<td align="left">LPAR6</td>
-<td align="left">CSF2RA</td>
-<td align="left">IDO1</td>
-<td align="left">APOBEC3A</td>
-<td align="left">LRRFIP1</td>
-<td align="left">ALDH1A1</td>
-<td align="left">ASPM</td>
-</tr>
-<tr class="odd">
-<td align="left">S100A12</td>
-<td align="left">SNHG8</td>
-<td align="left">RUNX3</td>
-<td align="left">APP</td>
-<td align="left">ASAH1</td>
-<td align="left">FOSL2</td>
-<td align="left">AC026369.3</td>
-<td align="left">GPR155</td>
-<td align="left">EIF1</td>
-<td align="left">HLA-DQA1</td>
-<td align="left">ANKRD22</td>
-<td align="left">CSF2RB</td>
-<td align="left">ABCG1</td>
-<td align="left">CENPF</td>
-</tr>
-<tr class="even">
-<td align="left">CDA</td>
-<td align="left">GDI2</td>
-<td align="left">ENHO</td>
-<td align="left">SELL</td>
-<td align="left">PDXK</td>
-<td align="left">HIF1A</td>
-<td align="left">CES1</td>
-<td align="left">ADAM28</td>
-<td align="left">CMTM6</td>
-<td align="left">CD74</td>
-<td align="left">RSAD2</td>
-<td align="left">SPIB</td>
-<td align="left">PPARG</td>
-<td align="left">CENPM</td>
-</tr>
-<tr class="odd">
-<td align="left">FCN1</td>
-<td align="left">ALKBH7</td>
-<td align="left">CD207</td>
-<td align="left">SERPINF1</td>
-<td align="left">PLA2G7</td>
-<td align="left">H3F3B</td>
-<td align="left">LTA4H</td>
-<td align="left">C3</td>
-<td align="left">CDKN1A</td>
-<td align="left">BASP1</td>
-<td align="left">GCH1</td>
-<td align="left">RAB11FIP1</td>
-<td align="left">MSR1</td>
-<td align="left">TPX2</td>
-</tr>
-<tr class="even">
-<td align="left">GIMAP1</td>
-<td align="left">COMMD6</td>
-<td align="left">GIPR</td>
-<td align="left">LILRA4</td>
-<td align="left">FTL</td>
-<td align="left">LITAF</td>
-<td align="left">GLRX</td>
-<td align="left">AL138899.1</td>
-<td align="left">PNRC1</td>
-<td align="left">CCND1</td>
-<td align="left">ETV7</td>
-<td align="left">MRPS6</td>
-<td align="left">SERPING1</td>
-<td align="left">FAM111B</td>
-</tr>
-<tr class="odd">
-<td align="left">ASGR1</td>
-<td align="left">RPL31</td>
-<td align="left">PIK3R6</td>
-<td align="left">MAP1A</td>
-<td align="left">AQP9</td>
-<td align="left">GK</td>
-<td align="left">CYP27A1</td>
-<td align="left">USP53</td>
-<td align="left">EEF1A1</td>
-<td align="left">CLNK</td>
-<td align="left">TNFSF10</td>
-<td align="left">CRYBG1</td>
-<td align="left">GLUL</td>
-<td align="left">RRM2</td>
-</tr>
-<tr class="even">
-<td align="left">CCR2</td>
-<td align="left">RPL34</td>
-<td align="left">SUSD3</td>
-<td align="left">DERL3</td>
-<td align="left">LAMP1</td>
-<td align="left">EREG</td>
-<td align="left">C1QC</td>
-<td align="left">GPR34</td>
-<td align="left">CCL19</td>
-<td align="left">HLA-DQB1</td>
-<td align="left">IFIT3</td>
-<td align="left">PLP2</td>
-<td align="left">CYB5A</td>
-<td align="left">GTSE1</td>
-</tr>
-<tr class="odd">
-<td align="left">CXCR2</td>
-<td align="left">FAM162A</td>
-<td align="left">RAB33A</td>
-<td align="left">ALOX5AP</td>
-<td align="left">GLUL</td>
-<td align="left">THBS1</td>
-<td align="left">GPNMB</td>
-<td align="left">CCL4L2</td>
-<td align="left">LAD1</td>
-<td align="left">C1orf54</td>
-<td align="left">IFIT2</td>
-<td align="left">SYNGR2</td>
-<td align="left">HDDC2</td>
-<td align="left">CDKN3</td>
-</tr>
-<tr class="even">
-<td align="left">ASGR2</td>
-<td align="left">ATP5MC2</td>
-<td align="left">SYTL1</td>
-<td align="left">SCT</td>
-<td align="left">S100A11</td>
-<td align="left">OSM</td>
-<td align="left">CD52</td>
-<td align="left">SRGAP1</td>
-<td align="left">FSCN1</td>
-<td align="left">RAB11FIP1</td>
-<td align="left">FPR2</td>
-<td align="left">S100A10</td>
-<td align="left">MS4A7</td>
-<td align="left">CEP55</td>
-</tr>
-<tr class="odd">
-<td align="left">GIMAP6</td>
-<td align="left">RPL38</td>
-<td align="left">LINC02381</td>
-<td align="left">SPCS1</td>
-<td align="left">CD9</td>
-<td align="left">CD300E</td>
-<td align="left">FABP5</td>
-<td align="left">NPFFR1</td>
-<td align="left">EBI3</td>
-<td align="left">ASAP1</td>
-<td align="left">HAPLN3</td>
-<td align="left">NFAT5</td>
-<td align="left">S100A9</td>
-<td align="left">CDK1</td>
-</tr>
-<tr class="even">
-<td align="left">GIMAP8</td>
-<td align="left">NDUFS8</td>
-<td align="left">KCNMB1</td>
-<td align="left">HERPUD1</td>
-<td align="left">CD44</td>
-<td align="left">VCAN</td>
-<td align="left">PPARG</td>
-<td align="left">CCL3L1</td>
-<td align="left">SLCO5A1</td>
-<td align="left">SLAMF7</td>
+<td align="left">IL7R</td>
+<td align="left">GNLY</td>
+<td align="left">TNFRSF4</td>
+<td align="left">GZMK</td>
+<td align="left">TNFRSF18</td>
+<td align="left">SRGN</td>
 <td align="left">ISG15</td>
-<td align="left">ACTG1</td>
-<td align="left">BLVRB</td>
-<td align="left">ZWINT</td>
-</tr>
-<tr class="odd">
-<td align="left">CD1D</td>
-<td align="left">RTRAF</td>
-<td align="left">FILIP1L</td>
-<td align="left">SPIB</td>
-<td align="left">SH3BGRL3</td>
-<td align="left">HBEGF</td>
-<td align="left">TXNIP</td>
-<td align="left">GUCY1A1</td>
-<td align="left">ANKRD33B</td>
-<td align="left">ICAM3</td>
-<td align="left">VAMP5</td>
-<td align="left">CCND3</td>
-<td align="left">NCF4</td>
-<td align="left">BIRC5</td>
 </tr>
 <tr class="even">
-<td align="left">CEACAM4</td>
+<td align="left">CLIC3</td>
 <td align="left">RPL32</td>
-<td align="left">CACNA2D3</td>
-<td align="left">CYB561A3</td>
-<td align="left">MGAT1</td>
-<td align="left">SDS</td>
-<td align="left">LGALS3BP</td>
-<td align="left">ARHGEF12</td>
-<td align="left">MIR155HG</td>
-<td align="left">FNBP1</td>
-<td align="left">IL1B</td>
-<td align="left">SUSD1</td>
-<td align="left">CHCHD10</td>
-<td align="left">AURKB</td>
-</tr>
-<tr class="odd">
-<td align="left">DUSP6</td>
-<td align="left">BTF3</td>
-<td align="left">ABCB4</td>
-<td align="left">LINC00996</td>
-<td align="left">VIM</td>
-<td align="left">IL1B</td>
-<td align="left">FAM89A</td>
-<td align="left">CX3CR1</td>
-<td align="left">HMSD</td>
-<td align="left">ARF6</td>
-<td align="left">HERC5</td>
-<td align="left">ALOX5AP</td>
-<td align="left">GYPC</td>
-<td align="left">CCNB2</td>
-</tr>
-<tr class="even">
-<td align="left">RCBTB2</td>
-<td align="left">RPL36</td>
-<td align="left">PPP1R16A</td>
-<td align="left">LTB</td>
-<td align="left">PLIN2</td>
-<td align="left">SLC16A10</td>
-<td align="left">S100A11</td>
-<td align="left">MERTK</td>
-<td align="left">DUSP4</td>
-<td align="left">CST7</td>
-<td align="left">RARRES3</td>
-<td align="left">SEC61B</td>
-<td align="left">SCD</td>
-<td align="left">ESCO2</td>
-</tr>
-<tr class="odd">
-<td align="left">PTGFRN</td>
-<td align="left">SEC11A</td>
-<td align="left">SCARF1</td>
-<td align="left">PLD4</td>
-<td align="left">FBP1</td>
-<td align="left">MMP19</td>
-<td align="left">CFD</td>
-<td align="left">PCNX2</td>
-<td align="left">TNFRSF9</td>
-<td align="left">RAB32</td>
-<td align="left">OAS2</td>
-<td align="left">UGCG</td>
-<td align="left">HSPA1A</td>
-<td align="left">KIF11</td>
-</tr>
-<tr class="even">
-<td align="left">GIMAP4</td>
-<td align="left">EIF3F</td>
-<td align="left">ITGB2-AS1</td>
-<td align="left">CLEC4C</td>
-<td align="left">DAB2</td>
-<td align="left">CXCL8</td>
-<td align="left">ALDH2</td>
-<td align="left">UNC5B</td>
-<td align="left">IL32</td>
-<td align="left">HLA-DRB1</td>
-<td align="left">APOL3</td>
-<td align="left">INPP4A</td>
-<td align="left">VSIG4</td>
-<td align="left">NUSAP1</td>
-</tr>
-<tr class="odd">
-<td align="left">CFP</td>
-<td align="left">RPL12</td>
-<td align="left">AL118516.1</td>
-<td align="left">STMN1</td>
-<td align="left">CD68</td>
-<td align="left">ZNF331</td>
-<td align="left">FBP1</td>
-<td align="left">FCER1A</td>
-<td align="left">TRAF1</td>
-<td align="left">ACTG1</td>
-<td align="left">FCGR1B</td>
-<td align="left">RASSF5</td>
-<td align="left">CSTA</td>
-<td align="left">NDC80</td>
-</tr>
-<tr class="even">
-<td align="left">CSF3R</td>
-<td align="left">UQCR10</td>
-<td align="left">HOMER2</td>
-<td align="left">CD2AP</td>
-<td align="left">CD163</td>
-<td align="left">MXD1</td>
-<td align="left">S100A6</td>
-<td align="left">MAF</td>
-<td align="left">GADD45A</td>
-<td align="left">DENND1B</td>
-<td align="left">FCGR1A</td>
-<td align="left">CD5</td>
-<td align="left">FBP1</td>
-<td align="left">CCNA2</td>
-</tr>
-<tr class="odd">
-<td align="left">MAP3K3</td>
-<td align="left">RPL39</td>
-<td align="left">PCNX2</td>
-<td align="left">SLC15A4</td>
-<td align="left">C15orf48</td>
-<td align="left">S100A12</td>
-<td align="left">VSIG4</td>
-<td align="left">STAB1</td>
-<td align="left">TBC1D4</td>
-<td align="left">RGCC</td>
-<td align="left">CLEC4E</td>
-<td align="left">UPK3A</td>
-<td align="left">CEBPA</td>
-<td align="left">CCNB1</td>
-</tr>
-<tr class="even">
-<td align="left">NFAM1</td>
-<td align="left">RPL29</td>
-<td align="left">NFATC2</td>
-<td align="left">PMEPA1</td>
-<td align="left">S100A10</td>
-<td align="left">SLC25A37</td>
-<td align="left">ACP5</td>
-<td align="left">MMP14</td>
-<td align="left">KIF2A</td>
-<td align="left">BCL6</td>
-<td align="left">IFI44</td>
-<td align="left">GPR153</td>
-<td align="left">STXBP2</td>
-<td align="left">CDCA3</td>
-</tr>
-<tr class="odd">
-<td align="left">AC096667.1</td>
-<td align="left">SLC25A5</td>
-<td align="left">RAB11FIP4</td>
-<td align="left">CCDC186</td>
-<td align="left">NCF2</td>
-<td align="left">CXCL2</td>
-<td align="left">FCGR3A</td>
-<td align="left">DNASE1L3</td>
-<td align="left">SOCS2</td>
-<td align="left">HLA-DOB</td>
-<td align="left">IFI44L</td>
-<td align="left">IGLON5</td>
-<td align="left">CD59</td>
-<td align="left">UHRF1</td>
-</tr>
-<tr class="even">
-<td align="left">AGTRAP</td>
-<td align="left">ATP5F1C</td>
-<td align="left">PAOX</td>
-<td align="left">FCHSD2</td>
-<td align="left">CCL2</td>
-<td align="left">AREG</td>
-<td align="left">CD81</td>
-<td align="left">GIMAP7</td>
-<td align="left">CD80</td>
-<td align="left">HLA-DRB5</td>
-<td align="left">IFITM3</td>
-<td align="left">ABCA6</td>
-<td align="left">LRP1</td>
-<td align="left">BUB1B</td>
-</tr>
-<tr class="odd">
-<td align="left">SH3PXD2B</td>
-<td align="left">RAP1A</td>
-<td align="left">FAM89B</td>
-<td align="left">ZFAT</td>
-<td align="left">SPP1</td>
-<td align="left">FCN1</td>
-<td align="left">PCOLCE2</td>
-<td align="left">LTC4S</td>
-<td align="left">RAMP1</td>
-<td align="left">RGS10</td>
-<td align="left">XAF1</td>
-<td align="left">GADD45A</td>
-<td align="left">SLCO2B1</td>
-<td align="left">CLSPN</td>
-</tr>
-<tr class="even">
-<td align="left">KCNE3</td>
-<td align="left">RPS24</td>
-<td align="left">GOLGA8N</td>
-<td align="left">MPEG1</td>
-<td align="left">RNASE1</td>
-<td align="left">INSIG1</td>
-<td align="left">ALDH1A1</td>
-<td align="left">GATM</td>
-<td align="left">PTGIR</td>
-<td align="left">DNASE1L3</td>
-<td align="left">PSTPIP2</td>
-<td align="left">MYOM1</td>
-<td align="left">TNFSF12</td>
-<td align="left">CENPU</td>
-</tr>
-<tr class="odd">
-<td align="left">IRAK3</td>
-<td align="left">HIGD2A</td>
-<td align="left">AC009093.2</td>
-<td align="left">PLP2</td>
-<td align="left">EMP1</td>
-<td align="left">NR4A1</td>
-<td align="left">TYROBP</td>
-<td align="left">SRGAP3</td>
-<td align="left">POGLUT1</td>
-<td align="left">DST</td>
-<td align="left">P2RX7</td>
-<td align="left">SOX4</td>
-<td align="left">AKR1B1</td>
-<td align="left">NUF2</td>
-</tr>
-<tr class="even">
-<td align="left">CATSPER1</td>
-<td align="left">RPL35</td>
-<td align="left">LPAR5</td>
-<td align="left">OFD1</td>
-<td align="left">PLPP3</td>
-<td align="left">VPS37B</td>
-<td align="left">TREM1</td>
-<td align="left">EGR1</td>
-<td align="left">SLC7A11</td>
-<td align="left">ZNF366</td>
-<td align="left">IFIH1</td>
-<td align="left">AC124319.2</td>
-<td align="left">GLRX</td>
-<td align="left">CENPK</td>
-</tr>
-<tr class="odd">
-<td align="left">TLR8</td>
-<td align="left">SUMO3</td>
-<td align="left">PAK1</td>
-<td align="left">NUCB2</td>
-<td align="left">OTOA</td>
-<td align="left">C5AR1</td>
-<td align="left">PLIN2</td>
-<td align="left">QPRT</td>
-<td align="left">MARCKSL1</td>
-<td align="left">LGALS2</td>
-<td align="left">CD274</td>
-<td align="left">ACSM3</td>
-<td align="left">ALOX5</td>
-<td align="left">ATAD2</td>
-</tr>
-<tr class="even">
-<td align="left">TPCN1</td>
-<td align="left">RPS15</td>
-<td align="left">TMEM273</td>
-<td align="left">SELENOS</td>
-<td align="left">SDC2</td>
-<td align="left">PPIF</td>
-<td align="left">CTSL</td>
-<td align="left">SLCO2B1</td>
-<td align="left">DUSP5</td>
-<td align="left">CCSER1</td>
-<td align="left">FPR1</td>
-<td align="left">GPR171</td>
-<td align="left">PPDPF</td>
-<td align="left">MAD2L1</td>
-</tr>
-<tr class="odd">
-<td align="left">FHL3</td>
-<td align="left">TPT1</td>
-<td align="left">GSE1</td>
-<td align="left">RPS12</td>
-<td align="left">NPL</td>
-<td align="left">SEMA6B</td>
-<td align="left">PLA2G16</td>
-<td align="left">HLA-DQB2</td>
-<td align="left">CCL17</td>
-<td align="left">HLA-DRA</td>
-<td align="left">PIM1</td>
-<td align="left">DAPK2</td>
-<td align="left">NCF2</td>
-<td align="left">CENPA</td>
-</tr>
-<tr class="even">
-<td align="left">CAMK1</td>
-<td align="left">UQCRB</td>
-<td align="left">PON2</td>
-<td align="left">SEL1L3</td>
-<td align="left">GSDME</td>
-<td align="left">PTGS2</td>
+<td align="left">GPR155</td>
+<td align="left">KLRB1</td>
+<td align="left">HOPX</td>
+<td align="left">TMSB10</td>
+<td align="left">EOMES</td>
+<td align="left">TNFRSF4</td>
+<td align="left">CD69</td>
 <td align="left">IFI6</td>
-<td align="left">FILIP1L</td>
-<td align="left">G0S2</td>
-<td align="left">CAMK2D</td>
+</tr>
+<tr class="odd">
+<td align="left">THEMIS</td>
+<td align="left">RPL34</td>
+<td align="left">ITGA1</td>
+<td align="left">RPLP1</td>
+<td align="left">KLRD1</td>
+<td align="left">LTB</td>
+<td align="left">HLA-DQA1</td>
+<td align="left">CHDH</td>
+<td align="left">CCL4</td>
+<td align="left">IFI44L</td>
+</tr>
+<tr class="even">
+<td align="left">FKBP11</td>
+<td align="left">RPS23</td>
+<td align="left">SMURF2</td>
+<td align="left">SLC4A10</td>
+<td align="left">KLRC1</td>
+<td align="left">IL2RA</td>
+<td align="left">HLA-DRA</td>
+<td align="left">IL17RB</td>
+<td align="left">CCL4L2</td>
+<td align="left">RSAD2</td>
+</tr>
+<tr class="odd">
+<td align="left">RFLNB</td>
+<td align="left">EEF1A1</td>
+<td align="left">CD226</td>
+<td align="left">IL4I1</td>
+<td align="left">CD63</td>
+<td align="left">FOXP3</td>
+<td align="left">DTHD1</td>
+<td align="left">IL13</td>
+<td align="left">EGR2</td>
+<td align="left">EIF2AK2</td>
+</tr>
+<tr class="even">
+<td align="left">RGL4</td>
+<td align="left">RPS12</td>
+<td align="left">THEMIS</td>
+<td align="left">TNFSF13B</td>
+<td align="left">CCL5</td>
+<td align="left">CTLA4</td>
+<td align="left">KLRG1</td>
+<td align="left">HSP90AB1</td>
+<td align="left">EGR3</td>
+<td align="left">HERC5</td>
+</tr>
+<tr class="odd">
+<td align="left">LGALS1</td>
+<td align="left">RPL39</td>
+<td align="left">THUMPD3-AS1</td>
+<td align="left">LST1</td>
+<td align="left">KIR2DL4</td>
+<td align="left">RTKN2</td>
+<td align="left">HLA-DQB1</td>
+<td align="left">GATA3</td>
+<td align="left">CCL3</td>
+<td align="left">LY6E</td>
+</tr>
+<tr class="even">
+<td align="left">CD2</td>
+<td align="left">RPL10</td>
+<td align="left">AC245297.3</td>
+<td align="left">NCR3</td>
+<td align="left">TRDC</td>
+<td align="left">TBC1D4</td>
+<td align="left">GZMH</td>
+<td align="left">RPLP0</td>
+<td align="left">CCL3L1</td>
+<td align="left">IFIT1</td>
+</tr>
+<tr class="odd">
+<td align="left">RNF167</td>
+<td align="left">RPL30</td>
+<td align="left">ITGAE</td>
+<td align="left">PRR5</td>
+<td align="left">CLNK</td>
+<td align="left">TNFRSF18</td>
+<td align="left">HLA-DRB1</td>
+<td align="left">IL5</td>
+<td align="left">NR4A1</td>
+<td align="left">ISG20</td>
+</tr>
+<tr class="even">
+<td align="left">CD3G</td>
+<td align="left">RPS6</td>
+<td align="left">GRAP2</td>
+<td align="left">CCR6</td>
+<td align="left">CXXC5</td>
+<td align="left">IL1R1</td>
+<td align="left">HLA-DRB5</td>
+<td align="left">HPGDS</td>
+<td align="left">XCL1</td>
+<td align="left">XAF1</td>
+</tr>
+<tr class="odd">
+<td align="left">COMMD8</td>
+<td align="left">TPT1</td>
+<td align="left">CD8A</td>
+<td align="left">TMIGD2</td>
+<td align="left">PIK3AP1</td>
+<td align="left">LINC01943</td>
+<td align="left">SAMD3</td>
+<td align="left">IL4</td>
+<td align="left">XCL2</td>
+<td align="left">MX1</td>
+</tr>
+<tr class="even">
+<td align="left">UBTF</td>
+<td align="left">RPL13</td>
+<td align="left">SUN2</td>
+<td align="left">NRIP1</td>
+<td align="left">LINC02446</td>
+<td align="left">LTA</td>
+<td align="left">HLA-DPB1</td>
+<td align="left">PTGDR2</td>
+<td align="left">NFKBID</td>
+<td align="left">IFIT3</td>
+</tr>
+<tr class="odd">
+<td align="left">S100A4</td>
+<td align="left">MAL</td>
+<td align="left">AC004687.1</td>
+<td align="left">CEBPD</td>
+<td align="left">KLRC2</td>
+<td align="left">HPGD</td>
+<td align="left">CMC1</td>
+<td align="left">KRT1</td>
+<td align="left">EGR1</td>
+<td align="left">CMPK2</td>
+</tr>
+<tr class="even">
+<td align="left">S100A10</td>
+<td align="left">CD40LG</td>
+<td align="left">TTC14</td>
+<td align="left">CTSH</td>
+<td align="left">IKZF2</td>
+<td align="left">HAPLN3</td>
+<td align="left">CST7</td>
+<td align="left">CACNA1D</td>
+<td align="left">DUSP2</td>
+<td align="left">OAS1</td>
+</tr>
+<tr class="odd">
+<td align="left">HMOX2</td>
+<td align="left">CCR7</td>
+<td align="left">SPN</td>
+<td align="left">DPP4</td>
+<td align="left">CAPN12</td>
+<td align="left">ZC3H12D</td>
+<td align="left">SH2D1A</td>
+<td align="left">GATA3-AS1</td>
+<td align="left">TNF</td>
+<td align="left">OAS3</td>
+</tr>
+<tr class="even">
+<td align="left">RAB8A</td>
+<td align="left">C1orf162</td>
+<td align="left">PARP8</td>
+<td align="left">IFI44</td>
+<td align="left">SLC12A6</td>
+<td align="left">CSGALNACT1</td>
+<td align="left">CD27</td>
+<td align="left">LIF</td>
+<td align="left">CD160</td>
+<td align="left">IFIT2</td>
+</tr>
+<tr class="odd">
+<td align="left">MYL12A</td>
+<td align="left">CD4</td>
+<td align="left">LENG8</td>
+<td align="left">PHACTR2</td>
+<td align="left">TRGC1</td>
+<td align="left">KLF2</td>
+<td align="left">CD74</td>
+<td align="left">PPARG</td>
+<td align="left">IFNG</td>
+<td align="left">EPSTI1</td>
+</tr>
+<tr class="even">
+<td align="left">SH3BGRL3</td>
+<td align="left">PLAC8</td>
+<td align="left">TRG-AS1</td>
+<td align="left">ABCB1</td>
+<td align="left">TXK</td>
+<td align="left">CD79B</td>
+<td align="left">HLA-DPA1</td>
+<td align="left">GADD45G</td>
+<td align="left">NR4A2</td>
+<td align="left">MX2</td>
+</tr>
+<tr class="odd">
+<td align="left">SAP18</td>
+<td align="left">LTB</td>
+<td align="left">NKTR</td>
+<td align="left">HIPK2</td>
+<td align="left">CD160</td>
+<td align="left">ZC2HC1A</td>
+<td align="left">LYST</td>
+<td align="left">CYSLTR1</td>
+<td align="left">BTG2</td>
+<td align="left">IFIH1</td>
+</tr>
+<tr class="even">
+<td align="left">VAMP8</td>
+<td align="left">TCF7</td>
+<td align="left">ZBTB20</td>
+<td align="left">TBC1D31</td>
+<td align="left">BCAS4</td>
+<td align="left">IL6R</td>
+<td align="left">APOBEC3G</td>
+<td align="left">ALAS1</td>
+<td align="left">CRTAM</td>
+<td align="left">IFI44</td>
+</tr>
+<tr class="odd">
+<td align="left">RPL18A</td>
+<td align="left">AP3M2</td>
+<td align="left">CHST12</td>
+<td align="left">RUNX2</td>
+<td align="left">DGKD</td>
+<td align="left">SOCS3</td>
+<td align="left">LINC00861</td>
+<td align="left">ZC2HC1A</td>
+<td align="left">RGCC</td>
+<td align="left">HERC6</td>
+</tr>
+<tr class="even">
+<td align="left">RPL29</td>
+<td align="left">NOSIP</td>
+<td align="left">PDE7A</td>
+<td align="left">IFNGR1</td>
+<td align="left">ZNF683</td>
+<td align="left">MAF</td>
+<td align="left">CLDND1</td>
+<td align="left">TMEM273</td>
+<td align="left">SPRY1</td>
+<td align="left">STAT1</td>
+</tr>
+<tr class="odd">
+<td align="left">ZFAS1</td>
+<td align="left">KDSR</td>
+<td align="left">PCNX1</td>
+<td align="left">RORA</td>
+<td align="left">VAV3</td>
+<td align="left">ICOS</td>
+<td align="left">NKG7</td>
+<td align="left">C1orf162</td>
+<td align="left">GZMB</td>
+<td align="left">IFI35</td>
+</tr>
+<tr class="even">
+<td align="left">RPS8</td>
+<td align="left">RIPOR2</td>
+<td align="left">TMX4</td>
+<td align="left">MAN1A1</td>
+<td align="left">GZMA</td>
+<td align="left">NAMPT</td>
+<td align="left">F2R</td>
+<td align="left">TESPA1</td>
+<td align="left">GFOD1</td>
+<td align="left">OAS2</td>
+</tr>
+<tr class="odd">
+<td align="left">NEAT1</td>
+<td align="left">INPP4B</td>
+<td align="left">POLR2J3.#~2</td>
+<td align="left">ELK3</td>
+<td align="left">CTSW</td>
+<td align="left">CCR4</td>
+<td align="left">ITGB2</td>
+<td align="left">GNAQ</td>
+<td align="left">HIC1</td>
+<td align="left">DDX60L</td>
+</tr>
+<tr class="even">
+<td align="left">LTB</td>
+<td align="left">LDHB</td>
+<td align="left">PAG1</td>
+<td align="left">AQP3</td>
+<td align="left">SRGAP3</td>
+<td align="left">ARID5B</td>
+<td align="left">LYAR</td>
+<td align="left">ACSL4</td>
+<td align="left">FASLG</td>
+<td align="left">IRF7</td>
+</tr>
+<tr class="odd">
+<td align="left"></td>
+<td align="left">EEF1B2</td>
+<td align="left">AHNAK</td>
+<td align="left">NR1D2</td>
+<td align="left">PTGDR</td>
+<td align="left">MAST4</td>
+<td align="left">PYHIN1</td>
+<td align="left">LIMA1</td>
+<td align="left">GPR18</td>
+<td align="left">RTP4</td>
+</tr>
+<tr class="even">
+<td align="left"></td>
+<td align="left">RPS3A</td>
+<td align="left">MTRNR2L12</td>
+<td align="left">PNP</td>
+<td align="left">SERPINB6</td>
+<td align="left">CD4</td>
+<td align="left">LITAF</td>
+<td align="left">OSM</td>
+<td align="left">EVI2A</td>
+<td align="left">SAMD9L</td>
+</tr>
+<tr class="odd">
+<td align="left"></td>
+<td align="left">RPL9</td>
+<td align="left">OXNAD1</td>
+<td align="left">SPOCK2</td>
+<td align="left">TRGC2</td>
+<td align="left">CREM</td>
+<td align="left">APOBEC3C</td>
+<td align="left">PLIN2</td>
+<td align="left">TAGAP</td>
+<td align="left">DDX58</td>
+</tr>
+<tr class="even">
+<td align="left"></td>
+<td align="left">RPL5</td>
+<td align="left">CTSD</td>
+<td align="left">ERN1</td>
+<td align="left">TRG-AS1</td>
+<td align="left">LMNA</td>
+<td align="left">GZMM</td>
+<td align="left">IFNGR2</td>
+<td align="left">ZFP36L1</td>
+<td align="left">HELZ2</td>
+</tr>
+<tr class="odd">
+<td align="left"></td>
+<td align="left">RPL3</td>
+<td align="left">MT-ND3</td>
+<td align="left">PDE4D</td>
+<td align="left">CRTAM</td>
+<td align="left">CCR7</td>
+<td align="left">APMAP</td>
+<td align="left">PKIA</td>
+<td align="left">PGGHG</td>
+<td align="left">IFIT5</td>
+</tr>
+<tr class="even">
+<td align="left"></td>
+<td align="left">RPL11</td>
+<td align="left">DYNC1H1</td>
+<td align="left">CERK</td>
+<td align="left">ENTPD1</td>
+<td align="left">STAM</td>
+<td align="left">PTMS</td>
+<td align="left">PHLDA1</td>
+<td align="left">REL</td>
+<td align="left">HSH2D</td>
+</tr>
+<tr class="odd">
+<td align="left"></td>
+<td align="left">RPL29</td>
+<td align="left">GABPB1-AS1</td>
+<td align="left">TTC39C</td>
+<td align="left">FAM3C</td>
+<td align="left">GLRX</td>
+<td align="left">CEMIP2</td>
+<td align="left">TNFSF10</td>
+<td align="left">TNFSF14</td>
 <td align="left">DDX60</td>
-<td align="left">ECE1</td>
-<td align="left">HNMT</td>
-<td align="left">PTTG1</td>
+</tr>
+<tr class="even">
+<td align="left"></td>
+<td align="left">RPL22</td>
+<td align="left">MT-ND4L</td>
+<td align="left">NDRG1</td>
+<td align="left">DAPK2</td>
+<td align="left">CD28</td>
+<td align="left">CD81</td>
+<td align="left">CCDC71L</td>
+<td align="left">SDCBP</td>
+<td align="left">PARP9</td>
+</tr>
+<tr class="odd">
+<td align="left"></td>
+<td align="left">RPL35A</td>
+<td align="left">NSD1</td>
+<td align="left">JAML</td>
+<td align="left">RAB3GAP1</td>
+<td align="left">TNFRSF1B</td>
+<td align="left">GIMAP4</td>
+<td align="left">CENPV</td>
+<td align="left">ID2</td>
+<td align="left">OASL</td>
+</tr>
+<tr class="even">
+<td align="left"></td>
+<td align="left">RPS13</td>
+<td align="left">AKNA</td>
+<td align="left">GPR65</td>
+<td align="left">CD7</td>
+<td align="left">RELB</td>
+<td align="left">CCSER2</td>
+<td align="left">DUSP6</td>
+<td align="left">PRF1</td>
+<td align="left">PLSCR1</td>
+</tr>
+<tr class="odd">
+<td align="left"></td>
+<td align="left">RPL18A</td>
+<td align="left">MT-ND1</td>
+<td align="left">YWHAQ</td>
+<td align="left">CSF1</td>
+<td align="left">PIM2</td>
+<td align="left">PRKCB</td>
+<td align="left">AHR</td>
+<td align="left">PTGER4</td>
+<td align="left">PARP12</td>
+</tr>
+<tr class="even">
+<td align="left"></td>
+<td align="left">RPL10A</td>
+<td align="left">MDM4</td>
+<td align="left">LMO4</td>
+<td align="left">TNIP3</td>
+<td align="left">FRMD4B</td>
+<td align="left">SYNE1</td>
+<td align="left">METTL8</td>
+<td align="left">FABP5</td>
+<td align="left">TNFSF10</td>
+</tr>
+<tr class="odd">
+<td align="left"></td>
+<td align="left">RPS25</td>
+<td align="left">MT-ND2</td>
+<td align="left">MIS18BP1</td>
+<td align="left">AOAH</td>
+<td align="left">GBP2</td>
+<td align="left">ARAP2</td>
+<td align="left">NME1</td>
+<td align="left">PHLDA1</td>
+<td align="left">PARP14</td>
+</tr>
+<tr class="even">
+<td align="left"></td>
+<td align="left">RPS5</td>
+<td align="left">CLEC2D</td>
+<td align="left">PMVK</td>
+<td align="left">LINC01871</td>
+<td align="left">CMTM6</td>
+<td align="left">PPP1R14B</td>
+<td align="left">NDFIP2</td>
+<td align="left">KLRD1</td>
+<td align="left">GBP4</td>
+</tr>
+<tr class="odd">
+<td align="left"></td>
+<td align="left">RPL14</td>
+<td align="left">ASH1L</td>
+<td align="left">ZNRF1</td>
+<td align="left">SCML4</td>
+<td align="left">DNPH1</td>
+<td align="left">DGKZ</td>
+<td align="left">LINC01943</td>
+<td align="left">PTPN7</td>
+<td align="left">STAT2</td>
+</tr>
+<tr class="even">
+<td align="left"></td>
+<td align="left">PFDN5</td>
+<td align="left">ANKRD13D</td>
+<td align="left">DDIT4</td>
+<td align="left">GSTP1</td>
+<td align="left">RAB11FIP1</td>
+<td align="left">TC2N</td>
+<td align="left">ICOS</td>
+<td align="left">SH2D2A</td>
+<td align="left">TRIM22</td>
+</tr>
+<tr class="odd">
+<td align="left"></td>
+<td align="left">UQCRB</td>
+<td align="left">N4BP2L2</td>
+<td align="left">OSTF1</td>
+<td align="left">IL2RB</td>
+<td align="left">FAS</td>
+<td align="left">ITGB1</td>
+<td align="left">P2RX5</td>
+<td align="left">IER2</td>
+<td align="left">TRIM25</td>
+</tr>
+<tr class="even">
+<td align="left"></td>
+<td align="left">BTF3</td>
+<td align="left">CD2</td>
+<td align="left">S100A4</td>
+<td align="left">GNPTAB</td>
+<td align="left">PIM3</td>
+<td align="left">HMGB2</td>
+<td align="left">PDLIM5</td>
+<td align="left">NUCB2</td>
+<td align="left">GBP1</td>
+</tr>
+<tr class="odd">
+<td align="left"></td>
+<td align="left">EIF3G</td>
+<td align="left">MYO1F</td>
+<td align="left">RGS14</td>
+<td align="left">PTPN22</td>
+<td align="left">TFRC</td>
+<td align="left">MXD4</td>
+<td align="left">BATF</td>
+<td align="left">NKG7</td>
+<td align="left">SAMD9</td>
+</tr>
+<tr class="even">
+<td align="left"></td>
+<td align="left">RPL36AL</td>
+<td align="left">PCSK7</td>
+<td align="left">RPSA</td>
+<td align="left">MATK</td>
+<td align="left">FURIN</td>
+<td align="left">YPEL3</td>
+<td align="left">THADA</td>
+<td align="left">NFKBIA</td>
+<td align="left">IFITM1</td>
+</tr>
+<tr class="odd">
+<td align="left"></td>
+<td align="left">EIF3K</td>
+<td align="left">MTRNR2L1</td>
+<td align="left">RPL41</td>
+<td align="left">PLA2G16</td>
+<td align="left">BATF</td>
+<td align="left">RIPOR2</td>
+<td align="left">CREM</td>
+<td align="left">RILPL2</td>
+<td align="left">NT5C3A</td>
+</tr>
+<tr class="even">
+<td align="left"></td>
+<td align="left">COX4I1</td>
+<td align="left">ACAP1</td>
+<td align="left">RPS24</td>
+<td align="left">SEMA4D</td>
+<td align="left">MIR4435-2HG</td>
+<td align="left">MT2A</td>
+<td align="left">NR3C1</td>
+<td align="left">TIGIT</td>
+<td align="left">C19orf66</td>
+</tr>
+<tr class="odd">
+<td align="left"></td>
+<td align="left">COMMD6</td>
+<td align="left">TRIM56</td>
+<td align="left">SOD1</td>
+<td align="left">CCDC69</td>
+<td align="left">AQP3</td>
+<td align="left">LIMD2</td>
+<td align="left">SLAMF1</td>
+<td align="left">IPCEF1</td>
+<td align="left">LAP3</td>
+</tr>
+<tr class="even">
+<td align="left"></td>
+<td align="left">GTF3A</td>
+<td align="left">ITM2C</td>
+<td align="left">EMP3</td>
+<td align="left">PRKACB</td>
+<td align="left">LIMS1</td>
+<td align="left">CXCR4</td>
+<td align="left">TIMP1</td>
+<td align="left">ZFP36</td>
+<td align="left">DTX3L</td>
 </tr>
 </tbody>
 </table>
@@ -2023,8 +1091,8 @@ for clust in top_genes.keys() :
 annot_genes = pd.DataFrame(dict([ (k,pd.Series(v)) for k,v in annot_genes.items() ]))
 annot_genes = annot_genes.rename(columns = {clust : "cluster_{clust}".format(clust=clust) for clust in annot_genes.columns})
 # Lets add the colors for each cluster from the UMAP
-clust_cols = dict(zip(sorted(set(mps_harmonized.obs["new_clusters"]), key = int),
-                      mps_harmonized.uns["new_clusters_colors"]))
+clust_cols = dict(zip(sorted(set(t_cell_harmonized.obs["leiden_labels"]), key = int),
+                      t_cell_harmonized.uns["leiden_labels_colors"]))
 clust_cols = pd.DataFrame(clust_cols,
                           index = ["col"]).rename(columns = dict(zip(clust_cols.keys(),
                                                                      ["cluster_{clust}".format(clust = clust) for clust
@@ -2036,8 +1104,8 @@ annot_genes = annot_genes.append(clust_cols)
 # Get the mean gene counts for sidebar
 gene_val_list = []
 gene_val_dict = {}
-for clust in sorted(set(mps_harmonized.obs["new_clusters"]), key = int) :
-    gene_vals = mps_harmonized.obs["n_genes"][mps_harmonized.obs["new_clusters"] == clust]
+for clust in sorted(set(t_cell_harmonized.obs["leiden_labels"]), key = int) :
+    gene_vals = t_cell_harmonized.obs["n_genes"][t_cell_harmonized.obs["leiden_labels"] == clust]
 
     mean = np.mean(gene_vals)
     gene_val_list.append(mean)
@@ -2051,8 +1119,8 @@ annot_genes = annot_genes.append(pd.DataFrame(gene_val_dict,
 
 
 # Get the mean expression of the top genes from each cluster
-de_df = {"mean_log_{clust}".format(clust = clust) : mps_harmonized.varm["de_res"]["mean_logExpr:{clust}".format(clust = clust)] for clust in sorted(set(mps_harmonized.obs["new_clusters"]), key = int)}
-de_df = pd.DataFrame(de_df, index = mps_harmonized.var.index)
+de_df = {"mean_log_{clust}".format(clust = clust) : t_cell_harmonized.varm["de_res"]["mean_logExpr:{clust}".format(clust = clust)] for clust in sorted(set(t_cell_harmonized.obs["leiden_labels"]), key = int)}
+de_df = pd.DataFrame(de_df, index = t_cell_harmonized.var.index)
 
 heatmap_df = de_df.loc[heatmap_genes]
 
@@ -2086,7 +1154,7 @@ _ = plt.title("top genes for every cluster")
 plt.show()
 ```
 
-<img src="figure_3_files/figure-markdown_github/heatmap1-1.png" width="960" /><img src="figure_3_files/figure-markdown_github/heatmap1-2.png" width="960" />
+<img src="figure_4_files/figure-markdown_github/heatmap1-1.png" width="960" /><img src="figure_4_files/figure-markdown_github/heatmap1-2.png" width="960" />
 
 To make things more readable, we also made a heatmap where we kept the columns clustered such that phenotypically similar clusters were grouped together, but manually ordered the rows.
 
@@ -2111,16 +1179,16 @@ annot_genes = annot_genes.fillna('')
 
 
 # Get the mean expression of the top genes from each cluster
-de_df = {"mean_log_{clust}".format(clust = clust) : mps_harmonized.varm["de_res"]["mean_logExpr:{clust}".format(clust = clust)] for clust in sorted(set(mps_harmonized.obs["new_clusters"]), key = int)}
-de_df = pd.DataFrame(de_df, index = mps_harmonized.var.index)
+de_df = {"mean_log_{clust}".format(clust = clust) : t_cell_harmonized.varm["de_res"]["mean_logExpr:{clust}".format(clust = clust)] for clust in sorted(set(t_cell_harmonized.obs["leiden_labels"]), key = int)}
+de_df = pd.DataFrame(de_df, index = t_cell_harmonized.var.index)
 
 heatmap_df = de_df.loc[heatmap_genes]
 
 # Get the mean gene counts for sidebar
 gene_val_list = []
 gene_val_dict = {}
-for clust in sorted(set(mps_harmonized.obs["new_clusters"]), key = int) :
-    gene_vals = mps_harmonized.obs["n_genes"][mps_harmonized.obs["new_clusters"] == clust]
+for clust in sorted(set(t_cell_harmonized.obs["leiden_labels"]), key = int) :
+    gene_vals = t_cell_harmonized.obs["n_genes"][t_cell_harmonized.obs["leiden_labels"] == clust]
 
     mean = np.mean(gene_vals)
     gene_val_list.append(mean)
@@ -2159,7 +1227,7 @@ _ = plt.title("top genes for every cluster")
 plt.show()
 ```
 
-<img src="figure_3_files/figure-markdown_github/ordered_heatmap-5.png" width="960" /><img src="figure_3_files/figure-markdown_github/ordered_heatmap-6.png" width="960" />
+<img src="figure_4_files/figure-markdown_github/ordered_heatmap-5.png" width="960" /><img src="figure_4_files/figure-markdown_github/ordered_heatmap-6.png" width="960" />
 
 Finally, we wanted to make a publication-ready figure using the wonderful `ComplexHeatmap` package, where we can add some annotations for each cluster and add spaces between clusters to make it even more readable.
 
@@ -2251,61 +1319,19 @@ draw(heatmap_list, heatmap_legend_list =lgd_list, padding = unit(c(0.5, 0.5, 2, 
      cluster_row_slices = FALSE)
 ```
 
-![](figure_3_files/figure-markdown_github/nice_heatmap-9.png)
-
-Beyond looking at unbiased markers, we wanted to use legacy knowledge to better understand the biological role of our clusters. Using dot plots, we can see some cannonical genes expressed by the clusters.
-
-``` python
-mps_gene_dict = {
-    "monocyte" : ["CD14", "FCGR3A", "S100A8", "C5AR1", "FCN1", "VCAN", "CCR1", "CCR2"],
-    "cDC" : ["IRF4", "CD1C", "CD1E", "FCER1A", "CLEC10A", "IRF8", "BATF3", "CLEC9A", "XCR1", "CCR7", "LAMP3",
-             "AXL", "PPP1R14A", "TCF4", "GZMB", "JCHAIN", "IL3RA"],
-    "macrophage" : ["MARCO", "MSR1", "VSIG4", "C1QA", "C1QB", "C1QC", "PPARG", "CD163"],
-    "macrophage_specialization" : ["FABP4", "APOE", "VEGFA", "AREG", "SPP1", "MERTK", "CCL2", "CCL3", "CCL4",
-                                   "CXCL9", "CXCL10", "CXCL11"]
-}
-
-dot_cmap = clr.LinearSegmentedColormap.from_list('gene_cmap', ["#d3d3d3", "#a5cde3", "#6dafd6", '#08306b'], N=200)
-
-for key in mps_gene_dict.keys() :
-    plot = sc.pl.dotplot(mps_harmonized, mps_gene_dict[key], groupby = "new_clusters",
-                  categories_order = ["11", "5", "6", "7", "13", "2", "14", "1", "8", "4", "9", "10", "3", "12"],
-                         show = False, return_fig = True, title = "{key} markers".format(key = key),
-                         cmap = dot_cmap, dot_max = 1)
-    axes_dict = plot.get_axes()
-    axes_dict["mainplot_ax"].set_axisbelow(True)
-    axes_dict["mainplot_ax"].grid()
-    plt.show()
-    plt.close()
-```
-
-<img src="figure_3_files/figure-markdown_github/dot_plots-1.png" width="428" /><img src="figure_3_files/figure-markdown_github/dot_plots-2.png" width="747" /><img src="figure_3_files/figure-markdown_github/dot_plots-3.png" width="428" /><img src="figure_3_files/figure-markdown_github/dot_plots-4.png" width="570" /><img src="figure_3_files/figure-markdown_github/dot_plots-5.png" width="960" />
+![](figure_4_files/figure-markdown_github/nice_heatmap-9.png)
 
 # Differential abundance analysis
 
-Next we wanted to evaluate which clusters were associated with particular group:condition combinations. First, we can do this in a qualitative way, looking at the UMAP embedding density of the cells that are in our different categorical groups. The takeaway from these plots are that the cells are not uniformly distributed across the categorical groups and there are some biases.
-
-``` python
-mps_harmonized.obs["pheno_tmpt"] = ["_".join([pheno, tmpt]) for pheno, tmpt in zip(mps_harmonized.obs["phenotype"],
-                                                                                   mps_harmonized.obs["sample"])]
-sc.tl.embedding_density(mps_harmonized, basis = "umap", groupby = "pheno_tmpt", key_added = "pheno_tmpt_dens")
-dens_plot = sc.pl.embedding_density(mps_harmonized, basis = "umap", key = "pheno_tmpt_dens", ncols = 3,
-                                    return_fig = True, show = False, wspace = 0.3)
-dens_plot.set_size_inches(7, 5)
-dens_plot
-```
-
-<img src="figure_3_files/figure-markdown_github/embedding_density-11.png" width="672" />
-
-To look at the data in a more quantitative way, we used a mixed-effects association logistic regression model similar to that described by Fonseka et al. We fit a logistic regression modelfor each cell cluster. Each cluster was modelled independently as follows : `cluster ~ 1 + condition:group + condition + group + (1 | id)`
+To determine which clusters were associated with particular group at a given condition, we used a mixed-effects association logistic regression model similar to that described by Fonseka et al. We fit a logistic regression model for each cell cluster. Each cluster was modelled independently as follows : `cluster ~ 1 + condition:group + condition + group + (1 | id)`
 
 The least-squares means of the factors in the model were calculated and all pairwise contrasts between the means of the groups at each condition (e.g. AA vs AC within baseline, AA vs AC within allergen, etc.) were compared. The OR with confidence interval for each sample/condition combination were plotted.
 
 ``` python
-cell_info = mps_harmonized.obs
+cell_info = t_cell_harmonized.obs
 ```
 
-<img src="figure_3_files/figure-markdown_github/cell_info-13.png" width="672" />
+<img src="figure_4_files/figure-markdown_github/cell_info-1.png" width="960" />
 
 ``` r
 library(lme4)
@@ -2424,7 +1450,7 @@ plot_contrasts <- function(d, x_breaks_by = 1, wrap_ncol = 6, y_ord = FALSE) {
 
 clust_df <- reticulate::py$cell_info
 
-abund_info <- get_abund_info(clust_df, cluster = clust_df$new_clusters,
+abund_info <- get_abund_info(clust_df, cluster = clust_df$leiden_labels,
                             contrast = "sample:phenotype",
                             random_effects = "id",
                             fixed_effects = c("sample", "phenotype"))
@@ -2432,12 +1458,159 @@ abund_info <- get_abund_info(clust_df, cluster = clust_df$new_clusters,
 plot_df <- do.call(rbind, abund_info)
 plot_df$direction <- ifelse(plot_df$estimate > 0, "AA", "ANA")
 
+
 plot_df$cluster <- as.numeric(gsub("cluster", "", plot_df$cluster))
 plot_df$sig <- ifelse(plot_df$p.value < 0.05, plot_df$direction, "non_sig")
-cl_order <- c(11, 5, 6, 7, 13, 2, 14, 1, 8, 4, 9, 10, 3, 12)
+cl_order <- c(9, 7, 3, 1, 5, 6, 8, 10, 2, 4)
 plot_df$cluster <- factor(plot_df$cluster, levels = rev(cl_order))
 plot_df$sample <- factor(plot_df$sample, levels = c("Pre", "Dil", "Ag"))
 plot_contrasts(plot_df)
 ```
 
-![](figure_3_files/figure-markdown_github/diff_abund-15.png)
+![](figure_4_files/figure-markdown_github/diff_abund-3.png)
+
+The most noticable thing in terms of differences between AA and AC are the Th2 cells. Even more interestingly, the IL9 expression in the Th2 cells is almost exclusively in the AA as shown below.
+
+``` python
+
+cmap_dict = {"AA" : clr.LinearSegmentedColormap.from_list('gene_cmap', ["#d3d3d3" ,'#FF8000'], N=200),
+             "ANA" : clr.LinearSegmentedColormap.from_list('gene_cmap', ["#d3d3d3" ,'#40007F'], N=200)}
+
+il9_fig, ax = plt.subplots(nrows = 1, ncols = 2, figsize = (10, 3))
+ax = ax.ravel()
+for num, pheno in enumerate(["AA", "ANA"]) :
+    pheno_dat = t_cell_harmonized[t_cell_harmonized.obs["phenotype"] == pheno]
+    _ = sc.pl.umap(pheno_dat, color = "IL9", cmap = cmap_dict[pheno], show = False, ax = ax[num],
+               title = pheno)
+_ = il9_fig.suptitle("IL9 expression")
+il9_fig
+```
+
+<img src="figure_4_files/figure-markdown_github/il9_plot-1.png" width="960" />
+
+We can look at the other Th2 genes in feature plots to show they really have a pathogenic effector phenotype
+
+``` python
+
+colormap = clr.LinearSegmentedColormap.from_list('gene_cmap', ["#e0e0e1", '#4576b8', '#02024a'], N=200)
+
+feature_genes = ["IL4", "IL5", "IL9", "IL13", "IL17RB", "HPGDS",
+                 "PTGDR2", "IL1RL1", "GATA3", "PPARG", "IRF4",
+                 "IL1RL1"]
+
+fig, ax = plt.subplots(nrows = 4, ncols = 3, figsize = (7, 7))
+ax = ax.ravel()
+for num, gene in enumerate(feature_genes) :
+    _ = sc.pl.umap(t_cell_harmonized, color=gene, cmap=colormap, show=False, ax = ax[num], title = gene)
+fig.tight_layout()
+fig
+```
+
+<img src="figure_4_files/figure-markdown_github/th2_plot-3.png" width="672" />
+
+# Differential expression analysis
+
+Next, we wanted to know which genes were differentially expressed between AA and AC at Ag. For this, we used `DESeq2` on the pseudobulk count matrix. We used a simple model of `gene ~ phenotype` where phenotype was a factor with 2 levels indicating the phenotypical group the sample came from. There were not too many significant genes, however the ones that came out were interesting. For example, in the Th2 cells, we see IL2RA and CTLA4 were up-regulated in the AA. All significant genes we found were up-regulated in the AA.
+
+``` r
+library(DESeq2)
+library(glue)
+
+count_mtx <- as.matrix(read.csv("/home/nealpsmith/projects/medoff/data/pseudobulk_t_cell_harmonized_counts.csv", row.names = 1))
+meta_data <- read.csv("/home/nealpsmith/projects/medoff/data/pseudobulk_t_cell_harmonized_meta.csv", row.names = 1)
+meta_data$phenotype <- factor(meta_data$phenotype, levels = c("ANA", "AA"))
+
+# Limit to just Ag samples
+meta_data <- meta_data[meta_data$sample == "Ag",]
+count_mtx <- count_mtx[,rownames(meta_data)]
+
+de_list <- list()
+for (clust in unique(meta_data$cluster)){
+  clust_meta <-meta_data[meta_data$cluster == clust,]
+  clust_count <- count_mtx[,rownames(clust_meta)]
+    if (nrow(clust_meta) > 5){
+
+      n_samp <- rowSums(clust_count != 0)
+      clust_count <- clust_count[n_samp > round(nrow(clust_meta) / 2),]
+
+      stopifnot(rownames(clust_meta) == colnames(clust_count))
+
+      dds <- DESeqDataSetFromMatrix(countData = clust_count,
+                                    colData = clust_meta,
+                                    design = ~phenotype)
+      dds <- DESeq(dds)
+      res <- results(dds)
+      plot_data <- as.data.frame(res)
+      plot_data <- plot_data[!is.na(plot_data$padj),]
+      plot_data$gene <- rownames(plot_data)
+      de_list[[glue("clust_{clust}")]] <- plot_data
+    }
+
+}
+
+aa_up <- lapply(names(de_list), function(x){
+    data <- de_list[[x]]
+    up_aa <- data[data$padj < 0.1 & data$log2FoldChange > 0,]$gene
+    up_ana <- data[data$padj < 0.1 & data$log2FoldChange < 0,]$gene
+    info_df <- data.frame("gene" = up_aa)
+    if (nrow(info_df) > 0){
+      info_df$cluster <- x
+    }
+  return(info_df)
+  }) %>%
+    do.call(rbind, .)
+
+aa_up
+```
+
+    ##    gene cluster
+    ## 1 CTLA4 clust_8
+    ## 2 IL2RA clust_8
+    ## 3   MAL clust_2
+    ## 4  GZMB clust_5
+    ## 5  CCR7 clust_3
+    ## 6 SOCS3 clust_3
+
+To visualize these, we used violin plots comparing the AA and AC expression distributions in the particular clusters
+
+``` python
+t_cell_ag = t_cell_harmonized[t_cell_harmonized.obs["sample"] == "Ag"]
+
+plot_info = pd.DataFrame({"gene" : ["IL2RA", "CTLA4", "MAL", "GZMB", "CCR7", "SOCS3"],
+                          "clust" : ["8", "8", "2", "5", "3", "3"]})
+
+fig, ax = plt.subplots(ncols=plot_info.shape[0], figsize = (12, 2))
+ax = ax.ravel()
+
+for num, indx in enumerate(plot_info.index.values) :
+    gene = plot_info.loc[indx, "gene"]
+    in_clust = plot_info.loc[indx, "clust"]
+    t_cell_gene_data = pd.DataFrame.sparse.from_spmatrix(t_cell_ag[:, gene].X, columns=[gene],
+                                                      index=t_cell_ag.obs_names).sparse.to_dense()
+    t_cell_gene_data = t_cell_gene_data.merge(t_cell_ag.obs[["id", "phenotype", "leiden_labels"]], how="left",
+                                        left_index=True, right_index=True)
+    t_cell_gene_data = t_cell_gene_data[t_cell_gene_data["leiden_labels"] == in_clust]
+
+    # Get medians
+    medians = [np.median(t_cell_gene_data[t_cell_gene_data["phenotype"] == "AA"][gene]),
+               np.median(t_cell_gene_data[t_cell_gene_data["phenotype"] == "ANA"][gene])]
+
+    # Make the plot
+    sns.violinplot(x="phenotype", y=gene, hue="phenotype", data=t_cell_gene_data, inner=None,
+                   palette={"AA": "#FF8000", "ANA": "#40007F"}, ax=ax[num], cut=0, alpha=0.5, dodge = False)
+    for violin in ax[num].collections:
+        violin.set_alpha(0.5)
+    sns.stripplot(x="phenotype", y=gene, hue="phenotype", data=t_cell_gene_data,
+                  palette={"AA": "grey", "ANA": "grey"},
+                  dodge=False, size=2, ax=ax[num], zorder=0)
+    # ax[num].scatter(x = [0, 1], y = medians, marker = "_", s = 600, c = "black")
+    _ = ax[num].get_legend().remove()
+    _ = ax[num].set_xlabel("")
+    _ = ax[num].set_ylabel("log(CPM)")
+    _ = ax[num].set_title(f"{gene} : t_cell {in_clust}")
+
+fig.tight_layout()
+fig
+```
+
+<img src="figure_4_files/figure-markdown_github/de_violins-1.png" width="1152" />

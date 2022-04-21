@@ -1,5 +1,5 @@
 ---
-title: "Figure 3"
+title: "Figure 4"
 output: rmarkdown::github_document
 ---
 
@@ -8,17 +8,12 @@ library(reticulate)
 use_python("/home/nealpsmith/.conda/envs/sc_analysis/bin/python")
 ```
 
-**For figure 3, we wanted to focus in on the mononuclear phagocytes (MPS).  We subsetted our main data object to just
-the MPS clusters. From there we wanted to find the heterogeneity among the MPS and find out which MPS clusters were
-enriched in AA or AC.**
+**For figure 4, we wanted to focus in on the T cells.  We subsetted our main data object to just the T cell clusters.
+From there we had a few goals : Find heterogeneity among the T cells, determine which T cell clusters are enriched in
+AA and ANA and look for DEGs among the T cells.**
 
-
-First, we isolated just the MPS clusters from our original data object.  Next, we wanted to determine the optimal number
-of clusters for our MPS. Briefly, similar to Reyes et al., we quantified cluster stability at many Leiden resolutions to
-determine which one should be used for downstream analyses.  First, data was clustered at many different resolutions
-ranging from 0.3 to 1.9.  Next, we iteratively subsampled 90% of the data (20 iterations) and at each iteration, we
-made a new clustering solution with the subsampled data and used the Adjusted Rand Index (ARI) to compare it to the
-clustering solution from the full data.
+First, we isolated just the T cells from our original data object.  NK cells were segregated and removed.  Next, we
+wanted to determine the optimal number of clusters for our T cells.
 
 ```{python rand_func, message=FALSE}
 import pegasus as pg
@@ -90,27 +85,26 @@ def _collect_samples(W, resolution, n_cells, resamp_size, true_class, random_sta
 
 ```
 
-
 ```{python, rand_plot}
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-mps_harmonized = pg.read_input("/home/nealpsmith/projects/medoff/data/myeloid_harmonized.h5ad")
+t_cell_harmonized = pg.read_input("/home/nealpsmith/projects/medoff/data/t_cell_harmonized.h5ad")
 
-# rand_indx_dict = rand_index_plot(W = mps_harmonized.uns["W_pca_harmony"],
+# rand_indx_dict = rand_index_plot(W = t_cell_harmonized.uns["W_pca_harmony"],
 #                                       resolutions  = [0.3, 0.5, 0.7, 0.9, 1.1, 1.3, 1.5, 1.7, 1.9],
 #                                       n_samples = 2)
 #
 # plot_df = pd.DataFrame(rand_indx_dict).T
 # plot_df = plot_df.reset_index()
 # plot_df = plot_df.melt(id_vars="index")
-# plot_df.to_csv(os.path.join(file_path(), "data", "ari_plots", "myeloid_harmonized_ARI.csv"))
-plot_df = pd.read_csv("/home/nealpsmith/projects/medoff/data/ari_plots/myeloid_harmonized_ARI.csv")
+# plot_df.to_csv(os.path.join(file_path(), "data", "ari_plots", "t_cell_harmonized_ARI.csv"))
+plot_df = pd.read_csv("/home/nealpsmith/projects/medoff/data/ari_plots/t_cell_harmonized_ARI.csv")
 fig, ax = plt.subplots(1)
 _ = sns.boxplot(x="index", y="value", data=plot_df, ax = ax)
 for box in ax.artists:
     box.set_facecolor("grey")
-ax.artists[6].set_facecolor("red") # The one we chose!
+ax.artists[5].set_facecolor("red") # The one we chose!
 ax.spines['right'].set_visible(False)
 ax.spines['top'].set_visible(False)
 ax.tick_params(axis='both', which='major', labelsize=15)
@@ -121,79 +115,22 @@ fig.tight_layout()
 fig
 ```
 
-
-Based on this rand index approach, we can see that a leiden resolution of 1.5 is the highest resolution where the
-median ARI of all iterations was > 0.9.  Given this, we started our clustering at this resolution.
+Based on this rand index approach, we can see that a leiden resolution of 1.3 is the highest resolution where the
+soultion remains quite stable.  Given this, we went forward with clustering at this resolution.  We can immediately
+appreciate this seperation of CD4 and CD8 clusters
 
 ```{python clustering}
 import scanpy as sc
 import matplotlib.colors as clr
 colormap = clr.LinearSegmentedColormap.from_list('gene_cmap', ["#d3d3d3" ,'#482cc7'], N=200)
 
-# pg.leiden(mps_harmonized, resolution = 1.5, rep = "pca_harmony", random_state = 2)
+# pg.leiden(t_cell_harmonized, resolution = 1.3, rep = "pca_harmony")
 
-sc.pl.umap(mps_harmonized, color = ["leiden_labels"], legend_loc = "on data")
-```
-
-After visually assessing many genes and through expert annotation, we could see that there was a small cluster of
-CLEC9A+ cDC1 cells among cluster 3.  Given we know that cDC1s have a distinct biological function, we manually
-subsetted these cells to represent their own cluster.  We can defend this choice by scoring cells using a cDC1 gene set
-that was published by Villani et al. Cell 2017.
-
-```{python, DC1_scoring}
-
-### Want to look at DC1 gene set (we think we see a small cluster of them) ###
-def score_cells(data, gene_set):
-    # Get rid of genes that aren't in data
-    gene_set = [gene for gene in gene_set if gene in data.var_names]
-    print(gene_set)
-    # Limit the data to just those genes
-    dat = data[:, gene_set].X
-    dat = dat.toarray()
-    mean = dat.mean(axis=0)
-    var = dat.var(axis=0)
-    std = np.sqrt(var)
-
-    with np.errstate(divide="ignore", invalid="ignore"):
-        dat = (dat - mean) / std
-    dat[dat < -5] = -5
-    dat[dat > 5] = 5
-
-    scores = dat.mean(axis=1)
-    return (scores)
-
-dc1_genes = ["CLEC9A", "C1ORF54", "HLA-DPA1", "CADM1", "CAMK2D", "CPVL", "HLA-DPB2", "WDFY4", "CPNE3", "IDO1",
-            "HLA-DPB1", "LOC645638", "HLA-DOB", "HLA-DQB1", "HLA-DQB", "CLNK", "CSRP1", "SNX3", "ZNF366",
-             "KIAA1598", "NDRG2", "ENPP1", "RGS10", "AX747832", "CYB5R3", "ID2", "XCR1", "FAM190A", "ASAP1",
-             "SLAMF8", "CD59", "DHRS3", "GCET2", "FNBP1", "TMEM14A", "NET1", "BTLA", "BCL6", "FLT3", "ADAM28", "SLAMF7",
-             "BATF3", "LGALS2", "VAC14", "PPA1", "APOL3", "C1ORF21", "CCND1", "ANPEP", "ELOVL5", "NCALD", "ACTN1",
-             "PIK3CB", "HAVCR2", "GYPC", "TLR10", "ASB2", "KIF16B", "LRRC18", "DST", "DENND1B", "DNASE1L3", "SLC24A4",
-             "VAV3", "THBD", "NAV1", "GSTM4", "TRERF1", "B3GNT7", "LACC1", "LMNA", "PTK2", "IDO2", "MTERFD3", "CD93",
-             "DPP4", "SLC9A9", "FCRL6", "PDLIM7", "CYP2E1", "PDE4DIP", "LIMA1", "CTTNBP2NL", "PPM1M", "OSBPL3", "PLCD1",
-             "CD38", "EHD4", "ACSS2", "LOC541471", "FUCA1", "SNX22", "APOL1", "DUSP10", "FAM160A2", "INF2", "DUSP2",
-             "PALM2", "RAB11FIP4", "DSE", "FAM135A", "KCNK6", "PPM1H", "PAFAH1B3", "PDLIM1", "TGM2", "SCARF1", "CD40",
-             "STX3", "WHAMMP3", "PRELID2", "PQLC2"]
-dc1_genes = [gene for gene in dc1_genes if gene in mps_harmonized.var_names]
-mps_harmonized.obs["dc1_score"] = score_cells(mps_harmonized, dc1_genes)
-
-sc.pl.umap(mps_harmonized, color="dc1_score", cmap = colormap)
-
-```
-
-Additionally, after expert annotation, we did not think cluster 10 represented any unique set of cells and seemed to
-share all major markers with cluster 1.  Therefore, we refined our clustering by combining clusters 1 and 10 and
-manually segregating the cDC1 cells using their UMAP coordinates.
-
-```{python dc1_subsetting}
-mps_harmonized.obs["umap_1"] = mps_harmonized.obsm["X_umap"][:, 0]
-mps_harmonized.obs["umap_2"] = mps_harmonized.obsm["X_umap"][:, 1]
-mps_harmonized.obs["new_clusters"] = mps_harmonized.obs["leiden_labels"]
-mps_harmonized.obs["new_clusters"][mps_harmonized.obs["new_clusters"] == "10"] = "1"
-
-mps_harmonized.obs["new_clusters"][
-        ((mps_harmonized.obs["umap_1"] > 5) & (mps_harmonized.obs["umap_1"] < 6.5)) & (
-                    (mps_harmonized.obs["umap_2"] < -5) & (mps_harmonized.obs["umap_2"] > -6.6))] = "10"
-sc.pl.umap(mps_harmonized, color = "new_clusters", legend_loc = "on data")
+figure = sc.pl.umap(t_cell_harmonized, color = ["leiden_labels", "CD4", "CD8A"],
+                    return_fig = True, show = False, legend_loc = "on data", ncols = 3,
+                    wspace = 0.3, cmap = colormap)
+figure.set_size_inches(12, 4)
+figure
 ```
 
 #Marker genes
@@ -202,17 +139,15 @@ First we can look at marker genes by AUROC.  The motivation here is to determine
 are good classifiers for cluster membership.  These stats were calculated using the Pegasus ```de_analysis``` function.
 
 ```{python DE_analysis}
-# pg.de_analysis(mps_harmonized, cluster = "new_clusters", auc = True,
-#                n_jobs = len(set(mps_harmonized.obs["new_clusters"])))
+# pg.de_analysis(t_cell_harmonized, cluster = "leiden_labels", auc = True,
+#                n_jobs = len(set(t_cell_harmonized.obs["leiden_labels"])))
 
 top_auc = {}
 top_genes = {}
-for clust in sorted(set(mps_harmonized.obs["new_clusters"]), key = int) :
-    df_dict = {"auc": mps_harmonized.varm["de_res"]["auroc:{clust}".format(clust=clust)]}
-    df = pd.DataFrame(df_dict, index=mps_harmonized.var.index)
-    df = df.sort_values(by=["auc"], ascending=False)
-    auc_df = df.iloc[0:50]
-    genes = auc_df[auc_df["auc"] >= 0.75].index.values
+for clust in sorted(set(t_cell_harmonized.obs["leiden_labels"]), key = int) :
+    df_dict = {"auc": t_cell_harmonized.varm["de_res"]["auroc:{clust}".format(clust=clust)]}
+    df = pd.DataFrame(df_dict, index=t_cell_harmonized.var.index)
+    genes = df[df["auc"] >= 0.75].index.values
     top_genes[clust] = genes
 
 top_gene_df = pd.DataFrame(dict([(k,pd.Series(v)) for k,v in top_genes.items() ]))
@@ -236,9 +171,9 @@ tested. Genes with an FDR < 5% were considered marker genes.
 # import neals_python_functions as nealsucks
 # # Read in the raw count data
 # raw_data = pg.read_input("/home/nealpsmith/projects/medoff/data/all_data.h5sc")
-# raw_data = raw_data[mps_harmonized.obs_names]
-# raw_data = raw_data[:, mps_harmonized.var_names]
-# raw_data.obs = mps_harmonized.obs[["leiden_labels", "Channel"]]
+# raw_data = raw_data[t_cell_harmonized.obs_names]
+# raw_data = raw_data[:, t_cell_harmonized.var_names]
+# raw_data.obs = t_cell_harmonized.obs[["leiden_labels", "Channel"]]
 #
 # # Create the matrix
 # raw_sum_dict = {}
@@ -262,7 +197,7 @@ tested. Genes with an FDR < 5% were considered marker genes.
 #
 # clust_df = pd.DataFrame(index=count_mtx.index)
 # # Lets run pseudobulk on clusters
-# for clust in set(mps_harmonized.obs["leiden_labels"]):
+# for clust in set(t_cell_harmonized.obs["leiden_labels"]):
 #     print(clust)
 #     meta_temp = meta_df.copy()
 #     meta_temp["isclust"] = ["yes" if cluster == clust else "no" for cluster in meta_temp["cluster"]]
@@ -276,10 +211,10 @@ tested. Genes with an FDR < 5% were considered marker genes.
 #     clust_df = clust_df.join(res[["pvalue"]].rename(
 #         columns={"pvalue": "pseudobulk_p_val:{clust}".format(clust=clust)}))
 
-de_res = mps_harmonized.varm["de_res"]
+de_res = t_cell_harmonized.varm["de_res"]
 # de_res = pd.DataFrame(de_res, index=res.index)
 # de_res = de_res.join(clust_df)
-de_res = pd.DataFrame(de_res, index = mps_harmonized.var_names)
+de_res = pd.DataFrame(de_res, index = t_cell_harmonized.var_names)
 de_res = de_res.fillna(0)
 names = [name for name in de_res.columns if name.startswith("pseudobulk_p_val")]
 
@@ -289,23 +224,23 @@ for name in names :
     de_res["pseudobulk_q_val:{clust}".format(clust = clust)] = stats.fdrcorrection(de_res[name])[1]
 
 de_res = de_res.to_records(index=False)
-mps_harmonized.varm["de_res"] = de_res
+t_cell_harmonized.varm["de_res"] = de_res
 
 top_genes = {}
-for clust in sorted(set(mps_harmonized.obs["leiden_labels"]), key = int) :
-    df_dict = {"auc": mps_harmonized.varm["de_res"]["auroc:{clust}".format(clust=clust)],
-               "pseudo_q" : mps_harmonized.varm["de_res"]["pseudobulk_q_val:{clust}".format(clust = clust)],
-               "pseudo_p" : mps_harmonized.varm["de_res"]["pseudobulk_p_val:{clust}".format(clust = clust)],
-               "pseudo_log_fc" : mps_harmonized.varm["de_res"]["pseudobulk_log_fold_change:{clust}".format(clust = clust)],
-               "percent" : mps_harmonized.varm["de_res"]["percentage:{clust}".format(clust = clust)]}
-    df = pd.DataFrame(df_dict, index=mps_harmonized.var.index)
+for clust in sorted(set(t_cell_harmonized.obs["leiden_labels"]), key = int) :
+    df_dict = {"auc": t_cell_harmonized.varm["de_res"]["auroc:{clust}".format(clust=clust)],
+               "pseudo_q" : t_cell_harmonized.varm["de_res"]["pseudobulk_q_val:{clust}".format(clust = clust)],
+               "pseudo_p" : t_cell_harmonized.varm["de_res"]["pseudobulk_p_val:{clust}".format(clust = clust)],
+               "pseudo_log_fc" : t_cell_harmonized.varm["de_res"]["pseudobulk_log_fold_change:{clust}".format(clust = clust)],
+               "percent" : t_cell_harmonized.varm["de_res"]["percentage:{clust}".format(clust = clust)]}
+    df = pd.DataFrame(df_dict, index=t_cell_harmonized.var.index)
     # Lets limit to genes where at least 20% cells express it
     df = df[df["percent"] > 20]
-    df = df.sort_values(by=["auc"], ascending=False)
-    auc_df = df.iloc[0:50]
+    # df = df.sort_values(by=["auc"], ascending=False)
+    # df = df.iloc[0:15]
     # genes = df.index.values
     # Get top 50 genes (first by AUC, then by pseudobulk)
-    genes = auc_df[auc_df["auc"] >= 0.75].index.values
+    genes = df[df["auc"] >= 0.75].index.values
 
     n_from_pseudo = 50 - len(genes)
     if n_from_pseudo > 0 :
@@ -354,8 +289,8 @@ for clust in top_genes.keys() :
 annot_genes = pd.DataFrame(dict([ (k,pd.Series(v)) for k,v in annot_genes.items() ]))
 annot_genes = annot_genes.rename(columns = {clust : "cluster_{clust}".format(clust=clust) for clust in annot_genes.columns})
 # Lets add the colors for each cluster from the UMAP
-clust_cols = dict(zip(sorted(set(mps_harmonized.obs["new_clusters"]), key = int),
-                      mps_harmonized.uns["new_clusters_colors"]))
+clust_cols = dict(zip(sorted(set(t_cell_harmonized.obs["leiden_labels"]), key = int),
+                      t_cell_harmonized.uns["leiden_labels_colors"]))
 clust_cols = pd.DataFrame(clust_cols,
                           index = ["col"]).rename(columns = dict(zip(clust_cols.keys(),
                                                                      ["cluster_{clust}".format(clust = clust) for clust
@@ -367,8 +302,8 @@ annot_genes = annot_genes.append(clust_cols)
 # Get the mean gene counts for sidebar
 gene_val_list = []
 gene_val_dict = {}
-for clust in sorted(set(mps_harmonized.obs["new_clusters"]), key = int) :
-    gene_vals = mps_harmonized.obs["n_genes"][mps_harmonized.obs["new_clusters"] == clust]
+for clust in sorted(set(t_cell_harmonized.obs["leiden_labels"]), key = int) :
+    gene_vals = t_cell_harmonized.obs["n_genes"][t_cell_harmonized.obs["leiden_labels"] == clust]
 
     mean = np.mean(gene_vals)
     gene_val_list.append(mean)
@@ -382,8 +317,8 @@ annot_genes = annot_genes.append(pd.DataFrame(gene_val_dict,
 
 
 # Get the mean expression of the top genes from each cluster
-de_df = {"mean_log_{clust}".format(clust = clust) : mps_harmonized.varm["de_res"]["mean_logExpr:{clust}".format(clust = clust)] for clust in sorted(set(mps_harmonized.obs["new_clusters"]), key = int)}
-de_df = pd.DataFrame(de_df, index = mps_harmonized.var.index)
+de_df = {"mean_log_{clust}".format(clust = clust) : t_cell_harmonized.varm["de_res"]["mean_logExpr:{clust}".format(clust = clust)] for clust in sorted(set(t_cell_harmonized.obs["leiden_labels"]), key = int)}
+de_df = pd.DataFrame(de_df, index = t_cell_harmonized.var.index)
 
 heatmap_df = de_df.loc[heatmap_genes]
 
@@ -443,16 +378,16 @@ annot_genes = annot_genes.fillna('')
 
 
 # Get the mean expression of the top genes from each cluster
-de_df = {"mean_log_{clust}".format(clust = clust) : mps_harmonized.varm["de_res"]["mean_logExpr:{clust}".format(clust = clust)] for clust in sorted(set(mps_harmonized.obs["new_clusters"]), key = int)}
-de_df = pd.DataFrame(de_df, index = mps_harmonized.var.index)
+de_df = {"mean_log_{clust}".format(clust = clust) : t_cell_harmonized.varm["de_res"]["mean_logExpr:{clust}".format(clust = clust)] for clust in sorted(set(t_cell_harmonized.obs["leiden_labels"]), key = int)}
+de_df = pd.DataFrame(de_df, index = t_cell_harmonized.var.index)
 
 heatmap_df = de_df.loc[heatmap_genes]
 
 # Get the mean gene counts for sidebar
 gene_val_list = []
 gene_val_dict = {}
-for clust in sorted(set(mps_harmonized.obs["new_clusters"]), key = int) :
-    gene_vals = mps_harmonized.obs["n_genes"][mps_harmonized.obs["new_clusters"] == clust]
+for clust in sorted(set(t_cell_harmonized.obs["leiden_labels"]), key = int) :
+    gene_vals = t_cell_harmonized.obs["n_genes"][t_cell_harmonized.obs["leiden_labels"] == clust]
 
     mean = np.mean(gene_vals)
     gene_val_list.append(mean)
@@ -495,7 +430,7 @@ Finally, we wanted to make a publication-ready figure using the wonderful ```Com
 add some annotations for each cluster and add spaces between clusters to make it even more readable.
 
 
-```{r nice_heatmap, fig.width = 6, fig.height = 10.2, warning = FALSE, message = FALSE}
+```{r nice_heatmap, fig.width = 6, fig.height = 8, warning = FALSE, message = FALSE}
 library(ComplexHeatmap)
 library(tidyverse)
 library(magrittr)
@@ -584,56 +519,11 @@ draw(heatmap_list, heatmap_legend_list =lgd_list, padding = unit(c(0.5, 0.5, 2, 
 
 ```
 
-
-Beyond looking at unbiased markers, we wanted to use legacy knowledge to better understand the biological role of our
-clusters.  Using dot plots, we can see some cannonical genes expressed by the clusters.
-
-```{python dot_plots}
-mps_gene_dict = {
-	"monocyte" : ["CD14", "FCGR3A", "S100A8", "C5AR1", "FCN1", "VCAN", "CCR1", "CCR2"],
-	"cDC" : ["IRF4", "CD1C", "CD1E", "FCER1A", "CLEC10A", "IRF8", "BATF3", "CLEC9A", "XCR1", "CCR7", "LAMP3",
-             "AXL", "PPP1R14A", "TCF4", "GZMB", "JCHAIN", "IL3RA"],
-	"macrophage" : ["MARCO", "MSR1", "VSIG4", "C1QA", "C1QB", "C1QC", "PPARG", "CD163"],
-    "macrophage_specialization" : ["FABP4", "APOE", "VEGFA", "AREG", "SPP1", "MERTK", "CCL2", "CCL3", "CCL4",
-                                   "CXCL9", "CXCL10", "CXCL11"]
-}
-
-dot_cmap = clr.LinearSegmentedColormap.from_list('gene_cmap', ["#d3d3d3", "#a5cde3", "#6dafd6", '#08306b'], N=200)
-
-for key in mps_gene_dict.keys() :
-    plot = sc.pl.dotplot(mps_harmonized, mps_gene_dict[key], groupby = "new_clusters",
-                  categories_order = ["11", "5", "6", "7", "13", "2", "14", "1", "8", "4", "9", "10", "3", "12"],
-                         show = False, return_fig = True, title = "{key} markers".format(key = key),
-                         cmap = dot_cmap, dot_max = 1)
-    axes_dict = plot.get_axes()
-    axes_dict["mainplot_ax"].set_axisbelow(True)
-    axes_dict["mainplot_ax"].grid()
-    plt.show()
-    plt.close()
-
-```
-
-
 #Differential abundance analysis
 
-Next we wanted to evaluate which clusters were associated with particular group:condition combinations.  First, we can
-do this in a qualitative way, looking at the UMAP embedding density of the cells that are in our different categorical
-groups.  The takeaway from these plots are that the cells are not uniformly distributed across the categorical groups
-and there are some biases.
-
-```{python embedding_density}
-mps_harmonized.obs["pheno_tmpt"] = ["_".join([pheno, tmpt]) for pheno, tmpt in zip(mps_harmonized.obs["phenotype"],
-                                                                                   mps_harmonized.obs["sample"])]
-sc.tl.embedding_density(mps_harmonized, basis = "umap", groupby = "pheno_tmpt", key_added = "pheno_tmpt_dens")
-dens_plot = sc.pl.embedding_density(mps_harmonized, basis = "umap", key = "pheno_tmpt_dens", ncols = 3,
-                                    return_fig = True, show = False, wspace = 0.3)
-dens_plot.set_size_inches(7, 5)
-dens_plot
-```
-
-To look at the data in a more quantitative way, we used a mixed-effects association logistic regression model similar
-to that described by Fonseka et al.  We fit a logistic regression modelfor each cell cluster. Each cluster was modelled
-independently as follows :
+To determine which clusters were associated with particular group at a given condition, we used a mixed-effects
+association logistic regression model similar to that described by Fonseka et al.  We fit a logistic regression model
+for each cell cluster. Each cluster was modelled independently as follows :
 ```cluster ~ 1 + condition:group + condition + group + (1 | id)```
 
 The least-squares means of the factors in the model were calculated and all pairwise contrasts between the means of the
@@ -641,8 +531,9 @@ groups at each condition (e.g. AA vs AC within baseline, AA vs AC within allerge
 confidence interval for each sample/condition combination were plotted.
 
 ```{python cell_info}
-cell_info = mps_harmonized.obs
+cell_info = t_cell_harmonized.obs
 ```
+
 
 ```{r diff_abund, warning = FALSE, message = FALSE}
 library(lme4)
@@ -761,7 +652,7 @@ plot_contrasts <- function(d, x_breaks_by = 1, wrap_ncol = 6, y_ord = FALSE) {
 
 clust_df <- reticulate::py$cell_info
 
-abund_info <- get_abund_info(clust_df, cluster = clust_df$new_clusters,
+abund_info <- get_abund_info(clust_df, cluster = clust_df$leiden_labels,
                             contrast = "sample:phenotype",
                             random_effects = "id",
                             fixed_effects = c("sample", "phenotype"))
@@ -769,11 +660,151 @@ abund_info <- get_abund_info(clust_df, cluster = clust_df$new_clusters,
 plot_df <- do.call(rbind, abund_info)
 plot_df$direction <- ifelse(plot_df$estimate > 0, "AA", "ANA")
 
+
 plot_df$cluster <- as.numeric(gsub("cluster", "", plot_df$cluster))
 plot_df$sig <- ifelse(plot_df$p.value < 0.05, plot_df$direction, "non_sig")
-cl_order <- c(11, 5, 6, 7, 13, 2, 14, 1, 8, 4, 9, 10, 3, 12)
+cl_order <- c(9, 7, 3, 1, 5, 6, 8, 10, 2, 4)
 plot_df$cluster <- factor(plot_df$cluster, levels = rev(cl_order))
 plot_df$sample <- factor(plot_df$sample, levels = c("Pre", "Dil", "Ag"))
 plot_contrasts(plot_df)
+
+```
+
+The most noticable thing in terms of differences between AA and AC are the Th2 cells.  Even more interestingly, the IL9
+expression in the Th2 cells is almost exclusively in the AA as shown below.
+
+
+```{python, il9_plot}
+
+cmap_dict = {"AA" : clr.LinearSegmentedColormap.from_list('gene_cmap', ["#d3d3d3" ,'#FF8000'], N=200),
+             "ANA" : clr.LinearSegmentedColormap.from_list('gene_cmap', ["#d3d3d3" ,'#40007F'], N=200)}
+
+il9_fig, ax = plt.subplots(nrows = 1, ncols = 2, figsize = (10, 3))
+ax = ax.ravel()
+for num, pheno in enumerate(["AA", "ANA"]) :
+    pheno_dat = t_cell_harmonized[t_cell_harmonized.obs["phenotype"] == pheno]
+    _ = sc.pl.umap(pheno_dat, color = "IL9", cmap = cmap_dict[pheno], show = False, ax = ax[num],
+               title = pheno)
+_ = il9_fig.suptitle("IL9 expression")
+il9_fig
+```
+
+We can look at the other Th2 genes in feature plots to show they really have a pathogenic effector phenotype
+```{python, th2_plot}
+
+colormap = clr.LinearSegmentedColormap.from_list('gene_cmap', ["#e0e0e1", '#4576b8', '#02024a'], N=200)
+
+feature_genes = ["IL4", "IL5", "IL9", "IL13", "IL17RB", "HPGDS",
+                 "PTGDR2", "IL1RL1", "GATA3", "PPARG", "IRF4",
+                 "IL1RL1"]
+
+fig, ax = plt.subplots(nrows = 4, ncols = 3, figsize = (7, 7))
+ax = ax.ravel()
+for num, gene in enumerate(feature_genes) :
+    _ = sc.pl.umap(t_cell_harmonized, color=gene, cmap=colormap, show=False, ax = ax[num], title = gene)
+fig.tight_layout()
+fig
+
+```
+
+# Differential expression analysis
+
+Next, we wanted to know which genes were differentially expressed between AA and AC at Ag.  For this, we used ```DESeq2```
+on the pseudobulk count matrix.  We used a simple model of ```gene ~ phenotype``` where phenotype was a factor with 2
+levels indicating the phenotypical group the sample came from.  There were not too many significant genes, however the
+ones that came out were interesting.  For example, in the Th2 cells, we see IL2RA and CTLA4 were up-regulated in the AA.
+All significant genes we found were up-regulated in the AA.
+
+```{r de_res, warning = FALSE, message = FALSE}
+library(DESeq2)
+library(glue)
+
+count_mtx <- as.matrix(read.csv("/home/nealpsmith/projects/medoff/data/pseudobulk_t_cell_harmonized_counts.csv", row.names = 1))
+meta_data <- read.csv("/home/nealpsmith/projects/medoff/data/pseudobulk_t_cell_harmonized_meta.csv", row.names = 1)
+meta_data$phenotype <- factor(meta_data$phenotype, levels = c("ANA", "AA"))
+
+# Limit to just Ag samples
+meta_data <- meta_data[meta_data$sample == "Ag",]
+count_mtx <- count_mtx[,rownames(meta_data)]
+
+de_list <- list()
+for (clust in unique(meta_data$cluster)){
+  clust_meta <-meta_data[meta_data$cluster == clust,]
+  clust_count <- count_mtx[,rownames(clust_meta)]
+    if (nrow(clust_meta) > 5){
+
+      n_samp <- rowSums(clust_count != 0)
+      clust_count <- clust_count[n_samp > round(nrow(clust_meta) / 2),]
+
+      stopifnot(rownames(clust_meta) == colnames(clust_count))
+
+      dds <- DESeqDataSetFromMatrix(countData = clust_count,
+                                    colData = clust_meta,
+                                    design = ~phenotype)
+      dds <- DESeq(dds)
+      res <- results(dds)
+      plot_data <- as.data.frame(res)
+      plot_data <- plot_data[!is.na(plot_data$padj),]
+      plot_data$gene <- rownames(plot_data)
+      de_list[[glue("clust_{clust}")]] <- plot_data
+    }
+
+}
+
+aa_up <- lapply(names(de_list), function(x){
+    data <- de_list[[x]]
+    up_aa <- data[data$padj < 0.1 & data$log2FoldChange > 0,]$gene
+    up_ana <- data[data$padj < 0.1 & data$log2FoldChange < 0,]$gene
+    info_df <- data.frame("gene" = up_aa)
+    if (nrow(info_df) > 0){
+      info_df$cluster <- x
+    }
+  return(info_df)
+  }) %>%
+    do.call(rbind, .)
+
+aa_up
+```
+
+To visualize these, we used violin plots comparing the AA and AC expression distributions in the particular clusters
+
+```{python de_violins}
+t_cell_ag = t_cell_harmonized[t_cell_harmonized.obs["sample"] == "Ag"]
+
+plot_info = pd.DataFrame({"gene" : ["IL2RA", "CTLA4", "MAL", "GZMB", "CCR7", "SOCS3"],
+                          "clust" : ["8", "8", "2", "5", "3", "3"]})
+
+fig, ax = plt.subplots(ncols=plot_info.shape[0], figsize = (12, 2))
+ax = ax.ravel()
+
+for num, indx in enumerate(plot_info.index.values) :
+    gene = plot_info.loc[indx, "gene"]
+    in_clust = plot_info.loc[indx, "clust"]
+    t_cell_gene_data = pd.DataFrame.sparse.from_spmatrix(t_cell_ag[:, gene].X, columns=[gene],
+                                                      index=t_cell_ag.obs_names).sparse.to_dense()
+    t_cell_gene_data = t_cell_gene_data.merge(t_cell_ag.obs[["id", "phenotype", "leiden_labels"]], how="left",
+                                        left_index=True, right_index=True)
+    t_cell_gene_data = t_cell_gene_data[t_cell_gene_data["leiden_labels"] == in_clust]
+
+    # Get medians
+    medians = [np.median(t_cell_gene_data[t_cell_gene_data["phenotype"] == "AA"][gene]),
+               np.median(t_cell_gene_data[t_cell_gene_data["phenotype"] == "ANA"][gene])]
+
+    # Make the plot
+    sns.violinplot(x="phenotype", y=gene, hue="phenotype", data=t_cell_gene_data, inner=None,
+                   palette={"AA": "#FF8000", "ANA": "#40007F"}, ax=ax[num], cut=0, alpha=0.5, dodge = False)
+    for violin in ax[num].collections:
+        violin.set_alpha(0.5)
+    sns.stripplot(x="phenotype", y=gene, hue="phenotype", data=t_cell_gene_data,
+                  palette={"AA": "grey", "ANA": "grey"},
+                  dodge=False, size=2, ax=ax[num], zorder=0)
+    # ax[num].scatter(x = [0, 1], y = medians, marker = "_", s = 600, c = "black")
+    _ = ax[num].get_legend().remove()
+    _ = ax[num].set_xlabel("")
+    _ = ax[num].set_ylabel("log(CPM)")
+    _ = ax[num].set_title(f"{gene} : t_cell {in_clust}")
+
+fig.tight_layout()
+fig
 
 ```
