@@ -93,7 +93,7 @@ def _collect_samples(W, resolution, n_cells, resamp_size, true_class, random_sta
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-epithelial_harmonized = pg.read_input("/home/nealpsmith/projects/medoff/data/epithelial_harmonized.h5ad")
+epithelial_harmonized = pg.read_input("/home/nealpsmith/projects/medoff/data/epithelial_harmonized_for_github.h5ad")
 
 # rand_indx_dict = rand_index_plot(W = epithelial_harmonized.uns["W_pca_harmony"],
 #                                       resolutions  = [0.3, 0.5, 0.7, 0.9, 1.1, 1.3, 1.5, 1.7, 1.9],
@@ -142,19 +142,43 @@ PRR4.
 sc.pl.umap(epithelial_harmonized, color = ["AZGP1", "PRR4"], cmap = colormap)
 ```
 
-We segregated these cells out by thier UMAP coordinates
+We segregated these cells out by thier UMAP coordinates.  Below is the new
 
 ```{python segregate_serous}
-epithelial_harmonized.obs["new_clusters"] = epithelial_harmonized.obs["leiden_labels"]
-categories = np.array(["1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14"])
-epithelial_harmonized.obs["new_clusters"] = pd.Categorical(epithelial_harmonized.obs["new_clusters"],
-                                                           categories=categories)
-epithelial_harmonized.obs["new_clusters"][
-    ((epithelial_harmonized.obsm["X_umap"][:, 0] > -2.2) & (epithelial_harmonized.obsm["X_umap"][:, 0] < -1)) & (
-            (epithelial_harmonized.obsm["X_umap"][:, 1] < -4.7) & (
-                epithelial_harmonized.obsm["X_umap"][:, 1] > -7))] = "14"
+# epithelial_harmonized.obs["new_clusters"] = epithelial_harmonized.obs["leiden_labels"]
+# categories = np.array(["1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14"])
+# epithelial_harmonized.obs["new_clusters"] = pd.Categorical(epithelial_harmonized.obs["new_clusters"],
+#                                                            categories=categories)
+# epithelial_harmonized.obs["new_clusters"][
+#     ((epithelial_harmonized.obsm["X_umap"][:, 0] > -2.2) & (epithelial_harmonized.obsm["X_umap"][:, 0] < -1)) & (
+#             (epithelial_harmonized.obsm["X_umap"][:, 1] < -4.7) & (
+#                 epithelial_harmonized.obsm["X_umap"][:, 1] > -7))] = "14"
 
-sc.pl.umap(epithelial_harmonized, color = "new_clusters", legend_loc = "on data")
+# sc.pl.umap(epithelial_harmonized, color = "new_clusters", legend_loc = "on data")
+
+# Change the cluster numbers (we re-ordered them to be the same order as in the heatmap shown later in the notebook)
+# new_clust_nums = { "11" : "1",
+#                    "2" : "2",
+#                    "8" : "3",
+#                    "9" : "4",
+#                    "12" : "5",
+#                    "10" : "6",
+#                    "5" : "7",
+#                    "3" : "8",
+#                    "6" : "9",
+#                    "13" : "10",
+#                    "4" : "11",
+#                    "1" : "12",
+#                    "7" : "13",
+#                    "14" : "14"
+#              }
+# epithelial_harmonized.obs["new_clusters"] = [new_clust_nums[cl] for cl in epithelial_harmonized.obs["new_clusters"]]
+colors = [epithelial_harmonized.uns["new_clusters_colors"][int(n)-1] for n in sorted(set(epithelial_harmonized.obs["new_clusters"]), key = int)]
+sc.pl.umap(epithelial_harmonized, color = "new_clusters", legend_loc = "on data", palette = colors)
+# Adjust this for later plotting
+# epithelial_harmonized.uns["new_clusters_colors"] = epithelial_harmonized.uns["new_clusters_colors"][10, 1, 7, 8, 11, 9, 4, 2, 5, 12, 3, 0, 6, 13]
+
+
 ```
 
 #Marker genes
@@ -593,7 +617,7 @@ colormap = clr.LinearSegmentedColormap.from_list('gene_cmap', ["#d3d3d3", "#a5cd
 
 for key in epithelial_gene_dict.keys() :
     plot = sc.pl.dotplot(epithelial_harmonized, epithelial_gene_dict[key], groupby = "new_clusters",
-                         categories_order = ["11", "2", "8", "9", "12", "10", "5", "3", "6", "13", "4", "1", "7", "14"],
+                         # categories_order = ["11", "2", "8", "9", "12", "10", "5", "3", "6", "13", "4", "1", "7", "14"],
                          show = False, return_fig = True, title = "{key} markers".format(key = key),
                          cmap = colormap)
     # plot.add_totals().style(dot_edge_color='black', dot_edge_lw=0.5).show()
@@ -618,9 +642,9 @@ library(DESeq2)
 library(glue)
 library(tidyverse)
 
-count_mtx <- as.matrix(read.csv("/home/nealpsmith/projects/medoff/data/pseudobulk_epithelial_harmonized_counts.csv",
+count_mtx <- as.matrix(read.csv("/home/nealpsmith/projects/medoff/data/pseudobulk_epithelial_harmonized_counts_for_github.csv",
                                 row.names = 1))
-meta_data <- read.csv("/home/nealpsmith/projects/medoff/data/pseudobulk_epithelial_harmonized_meta.csv", row.names = 1)
+meta_data <- read.csv("/home/nealpsmith/projects/medoff/data/pseudobulk_epithelial_harmonized_meta_for_github.csv", row.names = 1)
 meta_data$phenotype <- factor(meta_data$phenotype, levels = c("ANA", "AA"))
 
 de_list <- list()
@@ -812,7 +836,7 @@ gene_lists <- list("immune_mediators" = c("CCL26", "IL1R2", "HRH1", "IL13RA1", "
                                     "GSTA1", "GSTA2", "GSTA4", "SOD3", "PYCR1")
                    )
 
-plot_clusts <- c("cluster_3", "cluster_5", "cluster_7", "cluster_1", "cluster_4")
+plot_clusts <- c("cluster_8", "cluster_7", "cluster_13", "cluster_12", "cluster_11")
 
 for (gset in names(gene_lists)) {
   # Get the log-FC values for each gene in each cluster
@@ -850,22 +874,11 @@ for (gset in names(gene_lists)) {
   p_vals <- p_vals[,plot_clusts]
 
   # make a list for cluster colors
-  clust_cols <-list("clust" = c("cluster_1" = "#1f77b4",
-                                "cluster_2" = "#ff7f0e",
-                                "cluster_3" = "#279e68",
-                                "cluster_4" = "#d62728",
-                                "cluster_5" = "#aa40fc",
-                                "cluster_6" = "#8c564b",
-                                "cluster_7" = "#e377c2",
-                                "cluster_8" = "#b5bd61",
-                                "cluster_9" = "#17becf",
-                                "cluster_10" = "#aec7e8",
-                                "cluster_11" = "#ffbb78",
-                                "cluster_12" = "#98df8a",
-                                "cluster_13" = "#ff9896",
-                                "cluster_14" = "#c5b0d5"))
-
-
+  clust_cols <-list("clust" = c("cluster_8" = "#279e68",
+                                "cluster_7" = "#aa40fc",
+                                "cluster_13" = "#e377c2",
+                                "cluster_12" = "#1f77b4",
+                                "cluster_11" = "#d62728"))
 
   clust_annotation <- HeatmapAnnotation("names" =  anno_mark(at = 1:ncol(fc_vals),
                                                              labels = sapply(colnames(fc_vals), function(x) strsplit(x, "_")[[1]][2]),
