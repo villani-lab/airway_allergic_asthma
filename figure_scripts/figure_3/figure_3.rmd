@@ -1,6 +1,6 @@
 ---
 title: "Figure 3"
-output: rmarkdown::github_document
+output: html_document
 ---
 
 ```{r message=FALSE}
@@ -93,7 +93,7 @@ def _collect_samples(W, resolution, n_cells, resamp_size, true_class, random_sta
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-epithelial_harmonized = pg.read_input("/home/nealpsmith/projects/medoff/data/epithelial_harmonized_for_github.h5ad")
+epithelial_harmonized = pg.read_input("/home/nealpsmith/projects/medoff/data/anndata_for_publication/epithelial_harmonized.h5ad")
 
 # rand_indx_dict = rand_index_plot(W = epithelial_harmonized.uns["W_pca_harmony"],
 #                                       resolutions  = [0.3, 0.5, 0.7, 0.9, 1.1, 1.3, 1.5, 1.7, 1.9],
@@ -139,7 +139,7 @@ these cells to be their own cluster.  We can see this small cluster of cells by 
 PRR4.
 
 ```{python serous_markers}
-sc.pl.umap(epithelial_harmonized, color = ["AZGP1", "PRR4"], cmap = colormap)
+# sc.pl.umap(epithelial_harmonized, color = ["AZGP1", "PRR4"], cmap = colormap)
 ```
 
 We segregated these cells out by thier UMAP coordinates.  Below is the new
@@ -191,24 +191,24 @@ are good classifiers for cluster membership.  These stats were calculated using 
 # pg.de_analysis(epithelial_harmonized, cluster = "new_clusters", auc = True,
 #                n_jobs = len(set(epithelial_harmonized.obs["new_clusters"])), result_key="de_res_new")
 
-top_auc = {}
-top_genes = {}
-for clust in sorted(set(epithelial_harmonized.obs["new_clusters"]), key = int) :
-    df_dict = {"auc": epithelial_harmonized.varm["de_res_new"]["auroc:{clust}".format(clust=clust)]}
-    df = pd.DataFrame(df_dict, index=epithelial_harmonized.var.index)
-    df = df.sort_values(by=["auc"], ascending=False)
-    auc_df = df.iloc[0:50]
-    genes = auc_df[auc_df["auc"] >= 0.75].index.values
-    top_genes[clust] = genes
-
-top_gene_df = pd.DataFrame(dict([(k,pd.Series(v)) for k,v in top_genes.items() ]))
-top_gene_df = top_gene_df.rename(columns = {clust : "cluster_{clust}".format(clust=clust) for clust in top_genes.keys()})
-top_gene_df = top_gene_df.replace(np.nan, "")
+# top_auc = {}
+# top_genes = {}
+# for clust in sorted(set(epithelial_harmonized.obs["new_clusters"]), key = int) :
+#     df_dict = {"auc": epithelial_harmonized.varm["de_res_new"]["auroc:{clust}".format(clust=clust)]}
+#     df = pd.DataFrame(df_dict, index=epithelial_harmonized.var.index)
+#     df = df.sort_values(by=["auc"], ascending=False)
+#     auc_df = df.iloc[0:50]
+#     genes = auc_df[auc_df["auc"] >= 0.75].index.values
+#     top_genes[clust] = genes
+#
+# top_gene_df = pd.DataFrame(dict([(k,pd.Series(v)) for k,v in top_genes.items() ]))
+# top_gene_df = top_gene_df.rename(columns = {clust : "cluster_{clust}".format(clust=clust) for clust in top_genes.keys()})
+# top_gene_df = top_gene_df.replace(np.nan, "")
 ```
 
 ```{r show_auc}
-library(knitr)
-kable(reticulate::py$top_gene_df, caption = "genes with AUC > 0.75")
+# library(knitr)
+# kable(reticulate::py$top_gene_df, caption = "genes with AUC > 0.75")
 ```
 
 We can see from the above AUROC genes, that we don't have a strong enough signal from some clusters to get a good sense
@@ -628,6 +628,35 @@ for key in epithelial_gene_dict.keys() :
     plt.close()
 ```
 
+
+Given all of this information, we were able to annotate our clusters.  Below are the annotations we used
+
+```{python annotations}
+annotation_dict = { "1" : "Early ciliated",
+                    "2" : "Ciliated",
+                    "3" : "Mucous-ciliated",
+                    "4" : "Hillock",
+                    "5" : "Deuterosomal",
+                    "6" : "Cycling basal",
+                    "7" : "Basal",
+                    "8" : "Suprabasal",
+                    "9" : "quiesBasal",
+                    "10" : "Ionocyte",
+                    "11" : "Goblet",
+                    "12" : "quiesGoblet",
+                    "13" : "Club",
+                    "14" : "Serous"
+                    }
+
+epithelial_harmonized.obs["annotation"] = [annotation_dict[c] for c in epithelial_harmonized.obs["new_clusters"]]
+figure = sc.pl.umap(harmonized_data, color = [""],
+                    cmap = colormap, return_fig = True, show = False, ncols = 2)
+figure.set_size_inches(11, 11)
+figure
+
+```
+
+
 #Differential expression analysis
 
 To perform differential expression analyses we used ```DESeq2``` on a pseudobulk count matrix where we summed the UMI
@@ -638,117 +667,117 @@ When we compare the number of DEGs from Pre:Ag between AA and AC, we see that AA
 epithelial cells change much more when exposed to allergen in AA than AC.
 
 ```{r deseq2_res, warning = FALSE, message = FALSE}
-library(DESeq2)
-library(glue)
-library(tidyverse)
-
-count_mtx <- as.matrix(read.csv("/home/nealpsmith/projects/medoff/data/pseudobulk_epithelial_harmonized_counts_for_github.csv",
-                                row.names = 1))
-meta_data <- read.csv("/home/nealpsmith/projects/medoff/data/pseudobulk_epithelial_harmonized_meta_for_github.csv", row.names = 1)
-meta_data$phenotype <- factor(meta_data$phenotype, levels = c("ANA", "AA"))
-
-de_list <- list()
-for (clust in unique(meta_data$cluster)){
-  clust_meta <-meta_data[meta_data$cluster == clust,]
-  clust_count <- count_mtx[,rownames(clust_meta)]
-
-  # Lets do a comparison of groups at Pre and Ag
-  pheno_list <- list()
-  for (pheno in c("AA", "ANA")){
-
-    # Get just the samples from that phenotype and only pre and Ag
-    meta_temp <- clust_meta[clust_meta$phenotype ==pheno & clust_meta$sample %in% c("Pre", "Ag"),]
-    meta_temp$sample <- factor(meta_temp$sample, levels = c("Pre", "Ag"))
-
-    if(nrow(meta_temp) > 5){
-      count_temp <- clust_count[,rownames(meta_temp)]
-
-      n_samp <- rowSums(count_temp != 0)
-      count_temp <- count_temp[n_samp > round(nrow(meta_temp) / 2),]
-
-      stopifnot(rownames(meta_temp) == colnames(count_temp))
-      dds <- DESeqDataSetFromMatrix(countData = count_temp,
-                                    colData = meta_temp,
-                                    design = ~sample)
-
-      dds <- DESeq(dds)
-      res <- results(dds)
-      plot_data <- as.data.frame(res)
-      plot_data <- plot_data[!is.na(plot_data$padj),]
-      plot_data$gene <- rownames(plot_data)
-      n_de <- nrow(plot_data[plot_data$padj < 0.1,])
-      pheno_list[[pheno]] <- n_de
-    } else {
-      pheno_list[[pheno]] <- 0
-    }
-
-  }
-  df <- as.data.frame(pheno_list)
-  df$new_clusters <- clust
-  de_list[[clust]] <- df
-
-}
-
-de_counts <- do.call(rbind, de_list)
-
-de_counts <- de_counts[order(rowSums(de_counts), decreasing = FALSE),]
-
-de_counts$new_clusters <- factor(rownames(de_counts), levels = rownames(de_counts))
-plot_df <- reshape2::melt(de_counts, id.vars = "new_clusters") %>%
-  mutate(value = ifelse(variable == "ANA", -value, value))
-
-ggplot(plot_df, aes(x = new_clusters, y = value, group = variable, fill = variable)) +
-  geom_bar(stat = "identity") + coord_flip() +
-  scale_fill_manual(values = c("#FF8000", "#40007F")) +
-  scale_y_continuous(labels = abs) +
-  ggtitle(glue("Number of DE genes at Ag")) +
-  ylab("# of DE genes") + xlab("") +
-  theme_bw(base_size = 20)
+# library(DESeq2)
+# library(glue)
+# library(tidyverse)
+#
+# count_mtx <- as.matrix(read.csv("/home/nealpsmith/projects/medoff/data/pseudobulk_epithelial_harmonized_counts_for_github.csv",
+#                                 row.names = 1))
+# meta_data <- read.csv("/home/nealpsmith/projects/medoff/data/pseudobulk_epithelial_harmonized_meta_for_github.csv", row.names = 1)
+# meta_data$phenotype <- factor(meta_data$phenotype, levels = c("ANA", "AA"))
+#
+# de_list <- list()
+# for (clust in unique(meta_data$cluster)){
+#   clust_meta <-meta_data[meta_data$cluster == clust,]
+#   clust_count <- count_mtx[,rownames(clust_meta)]
+#
+#   # Lets do a comparison of groups at Pre and Ag
+#   pheno_list <- list()
+#   for (pheno in c("AA", "ANA")){
+#
+#     # Get just the samples from that phenotype and only pre and Ag
+#     meta_temp <- clust_meta[clust_meta$phenotype ==pheno & clust_meta$sample %in% c("Pre", "Ag"),]
+#     meta_temp$sample <- factor(meta_temp$sample, levels = c("Pre", "Ag"))
+#
+#     if(nrow(meta_temp) > 5){
+#       count_temp <- clust_count[,rownames(meta_temp)]
+#
+#       n_samp <- rowSums(count_temp != 0)
+#       count_temp <- count_temp[n_samp > round(nrow(meta_temp) / 2),]
+#
+#       stopifnot(rownames(meta_temp) == colnames(count_temp))
+#       dds <- DESeqDataSetFromMatrix(countData = count_temp,
+#                                     colData = meta_temp,
+#                                     design = ~sample)
+#
+#       dds <- DESeq(dds)
+#       res <- results(dds)
+#       plot_data <- as.data.frame(res)
+#       plot_data <- plot_data[!is.na(plot_data$padj),]
+#       plot_data$gene <- rownames(plot_data)
+#       n_de <- nrow(plot_data[plot_data$padj < 0.1,])
+#       pheno_list[[pheno]] <- n_de
+#     } else {
+#       pheno_list[[pheno]] <- 0
+#     }
+#
+#   }
+#   df <- as.data.frame(pheno_list)
+#   df$new_clusters <- clust
+#   de_list[[clust]] <- df
+#
+# }
+#
+# de_counts <- do.call(rbind, de_list)
+#
+# de_counts <- de_counts[order(rowSums(de_counts), decreasing = FALSE),]
+#
+# de_counts$new_clusters <- factor(rownames(de_counts), levels = rownames(de_counts))
+# plot_df <- reshape2::melt(de_counts, id.vars = "new_clusters") %>%
+#   mutate(value = ifelse(variable == "ANA", -value, value))
+#
+# ggplot(plot_df, aes(x = new_clusters, y = value, group = variable, fill = variable)) +
+#   geom_bar(stat = "identity") + coord_flip() +
+#   scale_fill_manual(values = c("#FF8000", "#40007F")) +
+#   scale_y_continuous(labels = abs) +
+#   ggtitle(glue("Number of DE genes at Ag")) +
+#   ylab("# of DE genes") + xlab("") +
+#   theme_bw(base_size = 20)
 
 ```
 
 We can also look at this in UMAP space.
 
 ```{python cell_info}
-cell_info = epithelial_harmonized.obs
-cell_info["umap_1"] = epithelial_harmonized.obsm["X_umap"][:,0]
-cell_info["umap_2"] = epithelial_harmonized.obsm["X_umap"][:,1]
+# cell_info = epithelial_harmonized.obs
+# cell_info["umap_1"] = epithelial_harmonized.obsm["X_umap"][:,0]
+# cell_info["umap_2"] = epithelial_harmonized.obsm["X_umap"][:,1]
 
 ```
 
 ```{r umap, fig.width = 12, fig.height = 4}
-library(ggpubr)
-
-umap_info <- reticulate::py$cell_info
-umap_info$new_clusters <- factor(umap_info$new_clusters)
-
-
-plot_df <- umap_info %>%
-  dplyr::select(umap_1, umap_2, phenotype, new_clusters) %>%
-  left_join(de_counts, by = "new_clusters")
-
-aa_plot <- ggplot(plot_df[plot_df$phenotype == "AA",], aes(x = umap_1, y = umap_2, color = AA)) +
-  geom_point(size = 0.5) +
-  scale_color_gradient(low="#d3d3d3", high="#FF8000", limits = c(0, max(plot_df$AA))) +
-  # ggtitle(glue("# of DE genes Pre vs Ag")) +
-  theme_classic(base_size = 20) +
-  theme(axis.text.x=element_blank(),
-        axis.ticks.x=element_blank(),
-        axis.text.y=element_blank(),
-        axis.ticks.y=element_blank())
-
-ana_plot <- ggplot(plot_df[plot_df$phenotype == "ANA",], aes(x = umap_1, y = umap_2, color = ANA)) +
-  geom_point(size = 0.5) +
-  scale_color_gradient(low="#d3d3d3", high="#40007F", limits = c(0, max(plot_df$AA))) +
-  # ggtitle(glue("# of DE genes Pre vs Ag")) +
-  theme_classic(base_size = 20) +
-  theme(axis.text.x=element_blank(),
-        axis.ticks.x=element_blank(),
-        axis.text.y=element_blank(),
-        axis.ticks.y=element_blank())
-
-all_plots <- ggarrange(plotlist = list("AA" = aa_plot, "ANA" = ana_plot), nrow = 1, widths = c(3,3), heights = c(4))
-all_plots
+# library(ggpubr)
+#
+# umap_info <- reticulate::py$cell_info
+# umap_info$new_clusters <- factor(umap_info$new_clusters)
+#
+#
+# plot_df <- umap_info %>%
+#   dplyr::select(umap_1, umap_2, phenotype, new_clusters) %>%
+#   left_join(de_counts, by = "new_clusters")
+#
+# aa_plot <- ggplot(plot_df[plot_df$phenotype == "AA",], aes(x = umap_1, y = umap_2, color = AA)) +
+#   geom_point(size = 0.5) +
+#   scale_color_gradient(low="#d3d3d3", high="#FF8000", limits = c(0, max(plot_df$AA))) +
+#   # ggtitle(glue("# of DE genes Pre vs Ag")) +
+#   theme_classic(base_size = 20) +
+#   theme(axis.text.x=element_blank(),
+#         axis.ticks.x=element_blank(),
+#         axis.text.y=element_blank(),
+#         axis.ticks.y=element_blank())
+#
+# ana_plot <- ggplot(plot_df[plot_df$phenotype == "ANA",], aes(x = umap_1, y = umap_2, color = ANA)) +
+#   geom_point(size = 0.5) +
+#   scale_color_gradient(low="#d3d3d3", high="#40007F", limits = c(0, max(plot_df$AA))) +
+#   # ggtitle(glue("# of DE genes Pre vs Ag")) +
+#   theme_classic(base_size = 20) +
+#   theme(axis.text.x=element_blank(),
+#         axis.ticks.x=element_blank(),
+#         axis.text.y=element_blank(),
+#         axis.ticks.y=element_blank())
+#
+# all_plots <- ggarrange(plotlist = list("AA" = aa_plot, "ANA" = ana_plot), nrow = 1, widths = c(3,3), heights = c(4))
+# all_plots
 ```
 
 Next, we wanted to look for genes that were significant with an interaction between the phenotype (AA vs. AC) and
@@ -759,63 +788,63 @@ levels of phenotype and sample to create a new factor called "interaction".  We 
 ```{r deg_interaction, warning = FALSE, message = FALSE}
 
 #Limit to just Ag samples
-meta_data <- meta_data[meta_data$sample != "Dil",]
-count_mtx <- count_mtx[,rownames(meta_data)]
-
-de_list <- list()
-for (clust in unique(meta_data$cluster)){
-  clust_meta <-meta_data[meta_data$cluster == clust,]
-  clust_meta$sample <- factor(clust_meta$sample, levels = c("Pre", "Ag"))
-  clust_meta$phenotype <- factor(clust_meta$phenotype, levels = c("ANA", "AA"))
-  clust_meta$interaction <- factor(paste(clust_meta$phenotype, clust_meta$sample, sep = "_"),
-                                  levels = c("ANA_Pre", "ANA_Ag", "AA_Pre", "AA_Ag"))
-
-  clust_count <- count_mtx[,rownames(clust_meta)]
-    if (nrow(clust_meta) > 5){
-
-      n_samp <- rowSums(clust_count != 0)
-      clust_count <- clust_count[n_samp > round(nrow(clust_meta) / 2),]
-
-      stopifnot(rownames(clust_meta) == colnames(clust_count))
-
-      dds <- DESeqDataSetFromMatrix(countData = clust_count,
-                                    colData = clust_meta,
-                                    design = ~interaction)
-      dds <- DESeq(dds, test = "LRT", reduced = ~1)
-      res <- results(dds, contrast = c("interaction", "AA_Ag",  "ANA_Ag"))
-      plot_data <- as.data.frame(res)
-      plot_data <- plot_data[!is.na(plot_data$padj),]
-      plot_data$gene <- rownames(plot_data)
-      de_list[[glue("cluster_{clust}")]] <- plot_data
-    }
-
-}
-
-de_counts <- lapply(seq_along(de_list), function(x){
-    data <- de_list[[x]]
-    up_aa <- nrow(data[data$padj < 0.1 & data$log2FoldChange > 0,])
-    up_ana <- nrow(data[data$padj < 0.1 & data$log2FoldChange < 0,])
-    info_df <- data.frame("AA" = up_aa,
-                          "ANA" = up_ana, row.names = names(de_list[x]))
-    return(info_df)
-  }) %>%
-    do.call(rbind, .)
-
-de_counts <- de_counts[order(rowSums(de_counts), decreasing = FALSE),]
-
-de_counts$cluster <- factor(rownames(de_counts), levels = rownames(de_counts))
-plot_df <- reshape2::melt(de_counts, id.vars = "cluster") %>%
-  mutate(value = ifelse(variable == "ANA", -value, value))
-
-
-ggplot(plot_df, aes(x = cluster, y = value, group = variable, fill = variable)) +
-  geom_bar(stat = "identity") + coord_flip() +
-  scale_fill_manual(values = c("#FF8000", "#40007F")) +
-  scale_y_continuous(labels = abs) +
-  ggtitle(glue("Number of DE genes at Ag")) +
-  ylab("# of DE genes") + xlab("") +
-  theme_bw(base_size = 20)
-
+# meta_data <- meta_data[meta_data$sample != "Dil",]
+# count_mtx <- count_mtx[,rownames(meta_data)]
+#
+# de_list <- list()
+# for (clust in unique(meta_data$cluster)){
+#   clust_meta <-meta_data[meta_data$cluster == clust,]
+#   clust_meta$sample <- factor(clust_meta$sample, levels = c("Pre", "Ag"))
+#   clust_meta$phenotype <- factor(clust_meta$phenotype, levels = c("ANA", "AA"))
+#   clust_meta$interaction <- factor(paste(clust_meta$phenotype, clust_meta$sample, sep = "_"),
+#                                   levels = c("ANA_Pre", "ANA_Ag", "AA_Pre", "AA_Ag"))
+#
+#   clust_count <- count_mtx[,rownames(clust_meta)]
+#     if (nrow(clust_meta) > 5){
+#
+#       n_samp <- rowSums(clust_count != 0)
+#       clust_count <- clust_count[n_samp > round(nrow(clust_meta) / 2),]
+#
+#       stopifnot(rownames(clust_meta) == colnames(clust_count))
+#
+#       dds <- DESeqDataSetFromMatrix(countData = clust_count,
+#                                     colData = clust_meta,
+#                                     design = ~interaction)
+#       dds <- DESeq(dds, test = "LRT", reduced = ~1)
+#       res <- results(dds, contrast = c("interaction", "AA_Ag",  "ANA_Ag"))
+#       plot_data <- as.data.frame(res)
+#       plot_data <- plot_data[!is.na(plot_data$padj),]
+#       plot_data$gene <- rownames(plot_data)
+#       de_list[[glue("cluster_{clust}")]] <- plot_data
+#     }
+#
+# }
+#
+# de_counts <- lapply(seq_along(de_list), function(x){
+#     data <- de_list[[x]]
+#     up_aa <- nrow(data[data$padj < 0.1 & data$log2FoldChange > 0,])
+#     up_ana <- nrow(data[data$padj < 0.1 & data$log2FoldChange < 0,])
+#     info_df <- data.frame("AA" = up_aa,
+#                           "ANA" = up_ana, row.names = names(de_list[x]))
+#     return(info_df)
+#   }) %>%
+#     do.call(rbind, .)
+#
+# de_counts <- de_counts[order(rowSums(de_counts), decreasing = FALSE),]
+#
+# de_counts$cluster <- factor(rownames(de_counts), levels = rownames(de_counts))
+# plot_df <- reshape2::melt(de_counts, id.vars = "cluster") %>%
+#   mutate(value = ifelse(variable == "ANA", -value, value))
+#
+#
+# ggplot(plot_df, aes(x = cluster, y = value, group = variable, fill = variable)) +
+#   geom_bar(stat = "identity") + coord_flip() +
+#   scale_fill_manual(values = c("#FF8000", "#40007F")) +
+#   scale_y_continuous(labels = abs) +
+#   ggtitle(glue("Number of DE genes at Ag")) +
+#   ylab("# of DE genes") + xlab("") +
+#   theme_bw(base_size = 20)
+#
 
 ```
 
@@ -825,86 +854,86 @@ results.  Below, we highlight genes involved in immune response, tissue remodell
 metabolism.
 
 ```{r deg_heatmaps, fig.width = 3, fig.height = 3}
-gene_lists <- list("immune_mediators" = c("CCL26", "IL1R2", "HRH1", "IL13RA1", "CX3CL1", "CXCL6", "IL33",
-                                          "HMGB1", "HMGB2", "S100A8", "LGALS3", "MIF", "CST1", "ANXA3",
-                                          "CXCL2", "CXCL8"),
-                   "tissue_remodelling" = c("MMP13", "MMP1", "LOXL4", "MMP7", "LOXL1", "VEGFA", "EGFR", "VCAN",
-                                            "ANGPT1", "SPDEF", "SCIN", "HAS3", "POSTN"),
-                   "barrier_function" = c("SCGB1A1", "TFF3", "SCGB2A1", "SCGB3A1", "SLC26A4", "CDH26", "ANO1", "CA2",
-                                          "GCNT4", "GALNT10", "CLCA2", "PCDH17", "OCLN", "CLDN8"),
-                   "metabolism" = c("IDO1", "SLC16A1", "SLC16A7", "ARG2", "GLUL", "TXN", "MAOA", "LTC4S",
-                                    "GSTA1", "GSTA2", "GSTA4", "SOD3", "PYCR1")
-                   )
-
-plot_clusts <- c("cluster_8", "cluster_7", "cluster_13", "cluster_12", "cluster_11")
-
-for (gset in names(gene_lists)) {
-  # Get the log-FC values for each gene in each cluster
-  fc_vals <- lapply(gene_lists[[gset]], function(gene){
-    log_fc_vals <- lapply(de_list, function(df){
-      return(df[gene, "log2FoldChange"])
-    }) %>%
-      as.data.frame(., row.names = gene) %>%
-      t() %>%
-      as.data.frame() %>%
-      rownames_to_column(var = "cluster")
-    return(log_fc_vals)
-  }) %>%
-    purrr::reduce(left_join, by= "cluster") %>%
-    column_to_rownames(var = "cluster") %>%
-    t() %>%
-    replace_na(0)
-  p_vals <- lapply(gene_lists[[gset]], function(gene){
-    log_fc_vals <- lapply(de_list, function(df){
-      return(df[gene, "padj"])
-    }) %>%
-      as.data.frame(., row.names = gene) %>%
-      t() %>%
-      as.data.frame() %>%
-      rownames_to_column(var = "cluster")
-    return(log_fc_vals)
-  }) %>%
-    purrr::reduce(left_join, by= "cluster") %>%
-    column_to_rownames(var = "cluster") %>%
-    t() %>%
-    replace_na(1)
-
-  # Remove clusters that we do not need
-  fc_vals <- fc_vals[,plot_clusts]
-  p_vals <- p_vals[,plot_clusts]
-
-  # make a list for cluster colors
-  clust_cols <-list("clust" = c("cluster_8" = "#279e68",
-                                "cluster_7" = "#aa40fc",
-                                "cluster_13" = "#e377c2",
-                                "cluster_12" = "#1f77b4",
-                                "cluster_11" = "#d62728"))
-
-  clust_annotation <- HeatmapAnnotation("names" =  anno_mark(at = 1:ncol(fc_vals),
-                                                             labels = sapply(colnames(fc_vals), function(x) strsplit(x, "_")[[1]][2]),
-                                                             which = "column", side = "top", labels_rot = 360, link_height = unit(2.5, "mm")),
-                                        "clust" = colnames(fc_vals),
-                                        col = clust_cols, which = "column", show_legend = FALSE)
-  clust_num_annotation <- HeatmapAnnotation(link = anno_mark(at = 1:ncol(fc_vals), labels = colnames(fc_vals), which = "column", side = "top"))
-
-  # The color function
-  fc_cols <- colorRamp2(c(min(fc_vals), 0, max(fc_vals)), c("#40007F", "white",  "#FF8000"))
-
-  hmap <- Heatmap(fc_vals,
-                  col = fc_cols,
-                  cluster_columns = FALSE,
-                  top_annotation = clust_annotation,
-                  heatmap_legend_param = list(title = "log-FC"),
-                  show_column_dend = FALSE,
-                  show_column_names = FALSE,
-                  column_title = gset,
-                  cell_fun = function(j, i, x, y, width, height, fill){
-                    if (p_vals[i, j] < 0.1){
-                      grid.circle(x, y, r = unit(1, "mm"), gp = gpar(fill = "light grey"))
-                    }
-                  })
-  draw(hmap)
-}
+# gene_lists <- list("immune_mediators" = c("CCL26", "IL1R2", "HRH1", "IL13RA1", "CX3CL1", "CXCL6", "IL33",
+#                                           "HMGB1", "HMGB2", "S100A8", "LGALS3", "MIF", "CST1", "ANXA3",
+#                                           "CXCL2", "CXCL8"),
+#                    "tissue_remodelling" = c("MMP13", "MMP1", "LOXL4", "MMP7", "LOXL1", "VEGFA", "EGFR", "VCAN",
+#                                             "ANGPT1", "SPDEF", "SCIN", "HAS3", "POSTN"),
+#                    "barrier_function" = c("SCGB1A1", "TFF3", "SCGB2A1", "SCGB3A1", "SLC26A4", "CDH26", "ANO1", "CA2",
+#                                           "GCNT4", "GALNT10", "CLCA2", "PCDH17", "OCLN", "CLDN8"),
+#                    "metabolism" = c("IDO1", "SLC16A1", "SLC16A7", "ARG2", "GLUL", "TXN", "MAOA", "LTC4S",
+#                                     "GSTA1", "GSTA2", "GSTA4", "SOD3", "PYCR1")
+#                    )
+#
+# plot_clusts <- c("cluster_8", "cluster_7", "cluster_13", "cluster_12", "cluster_11")
+#
+# for (gset in names(gene_lists)) {
+#   # Get the log-FC values for each gene in each cluster
+#   fc_vals <- lapply(gene_lists[[gset]], function(gene){
+#     log_fc_vals <- lapply(de_list, function(df){
+#       return(df[gene, "log2FoldChange"])
+#     }) %>%
+#       as.data.frame(., row.names = gene) %>%
+#       t() %>%
+#       as.data.frame() %>%
+#       rownames_to_column(var = "cluster")
+#     return(log_fc_vals)
+#   }) %>%
+#     purrr::reduce(left_join, by= "cluster") %>%
+#     column_to_rownames(var = "cluster") %>%
+#     t() %>%
+#     replace_na(0)
+#   p_vals <- lapply(gene_lists[[gset]], function(gene){
+#     log_fc_vals <- lapply(de_list, function(df){
+#       return(df[gene, "padj"])
+#     }) %>%
+#       as.data.frame(., row.names = gene) %>%
+#       t() %>%
+#       as.data.frame() %>%
+#       rownames_to_column(var = "cluster")
+#     return(log_fc_vals)
+#   }) %>%
+#     purrr::reduce(left_join, by= "cluster") %>%
+#     column_to_rownames(var = "cluster") %>%
+#     t() %>%
+#     replace_na(1)
+#
+#   # Remove clusters that we do not need
+#   fc_vals <- fc_vals[,plot_clusts]
+#   p_vals <- p_vals[,plot_clusts]
+#
+#   # make a list for cluster colors
+#   clust_cols <-list("clust" = c("cluster_8" = "#279e68",
+#                                 "cluster_7" = "#aa40fc",
+#                                 "cluster_13" = "#e377c2",
+#                                 "cluster_12" = "#1f77b4",
+#                                 "cluster_11" = "#d62728"))
+#
+#   clust_annotation <- HeatmapAnnotation("names" =  anno_mark(at = 1:ncol(fc_vals),
+#                                                              labels = sapply(colnames(fc_vals), function(x) strsplit(x, "_")[[1]][2]),
+#                                                              which = "column", side = "top", labels_rot = 360, link_height = unit(2.5, "mm")),
+#                                         "clust" = colnames(fc_vals),
+#                                         col = clust_cols, which = "column", show_legend = FALSE)
+#   clust_num_annotation <- HeatmapAnnotation(link = anno_mark(at = 1:ncol(fc_vals), labels = colnames(fc_vals), which = "column", side = "top"))
+#
+#   # The color function
+#   fc_cols <- colorRamp2(c(min(fc_vals), 0, max(fc_vals)), c("#40007F", "white",  "#FF8000"))
+#
+#   hmap <- Heatmap(fc_vals,
+#                   col = fc_cols,
+#                   cluster_columns = FALSE,
+#                   top_annotation = clust_annotation,
+#                   heatmap_legend_param = list(title = "log-FC"),
+#                   show_column_dend = FALSE,
+#                   show_column_names = FALSE,
+#                   column_title = gset,
+#                   cell_fun = function(j, i, x, y, width, height, fill){
+#                     if (p_vals[i, j] < 0.1){
+#                       grid.circle(x, y, r = unit(1, "mm"), gp = gpar(fill = "light grey"))
+#                     }
+#                   })
+#   draw(hmap)
+# }
 
 ```
 
@@ -918,26 +947,26 @@ a gene set score.  As we expect, we see that the distibutuion of the score is mu
 other clusters.
 
 ```{python hillock}
-hillock_genes = ["Upk3bl", "Krt4", "S100g", "Tppp3", "Ecm1", "Lgals3", "Ly6g6c", "Anxa1", "Calml3", "Crip1", "Plac8",
-                 "Ltf", "Krt7", "S100a6", "Upk1b", "Aqp5", "Krt15", "S100a10", "Serpinb2", "Krt13", "Pglyrp1",
-                 "2200002D01Rik", "Anxa2", "Pmm1", "Cldn4", "Cldn3", "Mal", "Ly6a", "Tacstd2", "Pdzk1ip1", "Nupr1",
-                 "Anxa3", "Gsto1", "Dusp1", "Krt19", "Pdlim1", "S100a11", "Gsta4", "Krt8", "Selenbp1", "Tmsb4x",
-                 "Mgst3", "Adh7", "Tspo", "S100a14", "Capg", "Ifitm1", "Crip2", "Ffar4", "Porcn", "Cldn23", "Ndufa4",
-                 "Cxcl17", "Igfbp5", "Cyp2b10", "Cav1", "Gprc5a", "Map1lc3a", "Aqp3"]
-
-# These are mouse genes, lets get the human ones
-human_to_mouse_db = pd.read_csv("/home/nealpsmith/data/useful/human_to_mouse_genes.csv")
-
-human_to_mouse_dict = dict(zip(human_to_mouse_db["MGI.symbol"], human_to_mouse_db["HGNC.symbol"]))
-
-hillock_genes = [human_to_mouse_dict[g] for g in hillock_genes if g in human_to_mouse_dict.keys()]
-
-pg.calc_signature_score(epithelial_harmonized, signatures={"hillock": hillock_genes})
-
-sc.pl.violin(epithelial_harmonized, keys = "hillock", groupby = "new_clusters", show = False)
-plt.xlabel("")
-figure = plt.gcf()
-figure.set_size_inches(6, 2)
-plt.show()
+# hillock_genes = ["Upk3bl", "Krt4", "S100g", "Tppp3", "Ecm1", "Lgals3", "Ly6g6c", "Anxa1", "Calml3", "Crip1", "Plac8",
+#                  "Ltf", "Krt7", "S100a6", "Upk1b", "Aqp5", "Krt15", "S100a10", "Serpinb2", "Krt13", "Pglyrp1",
+#                  "2200002D01Rik", "Anxa2", "Pmm1", "Cldn4", "Cldn3", "Mal", "Ly6a", "Tacstd2", "Pdzk1ip1", "Nupr1",
+#                  "Anxa3", "Gsto1", "Dusp1", "Krt19", "Pdlim1", "S100a11", "Gsta4", "Krt8", "Selenbp1", "Tmsb4x",
+#                  "Mgst3", "Adh7", "Tspo", "S100a14", "Capg", "Ifitm1", "Crip2", "Ffar4", "Porcn", "Cldn23", "Ndufa4",
+#                  "Cxcl17", "Igfbp5", "Cyp2b10", "Cav1", "Gprc5a", "Map1lc3a", "Aqp3"]
+#
+# # These are mouse genes, lets get the human ones
+# human_to_mouse_db = pd.read_csv("/home/nealpsmith/data/useful/human_to_mouse_genes.csv")
+#
+# human_to_mouse_dict = dict(zip(human_to_mouse_db["MGI.symbol"], human_to_mouse_db["HGNC.symbol"]))
+#
+# hillock_genes = [human_to_mouse_dict[g] for g in hillock_genes if g in human_to_mouse_dict.keys()]
+#
+# pg.calc_signature_score(epithelial_harmonized, signatures={"hillock": hillock_genes})
+#
+# sc.pl.violin(epithelial_harmonized, keys = "hillock", groupby = "new_clusters", show = False)
+# plt.xlabel("")
+# figure = plt.gcf()
+# figure.set_size_inches(6, 2)
+# plt.show()
 ```
 

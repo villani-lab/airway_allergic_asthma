@@ -8,7 +8,7 @@ use_python("/home/nealpsmith/.conda/envs/sc_analysis/bin/python")
 
 **For figure 2, we wanted to perform a general clustering of our cells to define the major lineages we captured. With these main lineages defined, we wanted to see if there were any major differences in abundance between our groups/conditions**
 
-First, we need to aggregate the matrices and assess the data quality. Here we use Pegasus to create a count matrix and to calcluate some quality-control statistics (% mitochondrial UMIs, number of genes per cell). From there, we can plot these statistics to determine the proper cutoffs to define the quality cells. Based on the distributions, we chose to include cells with &lt; 30% mitochondrial reads and &gt; 500 genes.
+First, we need to aggregate the matrices and assess the data quality. Here we use Pegasus to create a count matrix and to calculate some quality-control statistics (% mitochondrial UMIs, number of genes per cell). From there, we can plot these statistics to determine the proper cutoffs to define the quality cells. Based on the distributions, we chose to include cells with &lt; 30% mitochondrial reads and &gt; 500 genes.
 
 ``` python
 import pegasus as pg
@@ -17,6 +17,8 @@ import pandas as pd
 import matplotlib.colors as clr
 import matplotlib.pyplot as plt
 import matplotlib as mpl
+import numpy as np
+import seaborn as sns
 
 # Set a colormap
 colormap = clr.LinearSegmentedColormap.from_list('gene_cmap', ["#e0e0e1", '#4576b8', '#02024a'], N=200)
@@ -29,19 +31,86 @@ all_data = pg.read_input("/home/nealpsmith/projects/medoff/data/all_data.h5sc")
 pg.qc_metrics(all_data, percent_mito = 30)
 
 # Plot the percent mito/n genes
+# fig, ax = plt.subplots(1)
+# x = all_data.obs["n_genes"]
+# y = all_data.obs["percent_mito"]
+# _ = ax.hexbin(x, y, mincnt=1, xscale = "log")
+# _ = ax.set_xticks([10, 100, 1000])
+# _ = ax.get_xaxis().set_major_formatter(mpl.ticker.ScalarFormatter())
+# _ = ax.axvline(500, color="red")
+# _ = ax.axhline(30, color="red")
+# _ = plt.xlabel("Number of genes")
+# _ = plt.ylabel("percent mitochondrial UMIs")
+
+violin_dat = all_data.obs[["Channel", "percent_mito"]]
+violin_dat[["Channel"]] = [n.replace("ANA", "AC") for n in violin_dat["Channel"]]
+violin_dat[["Channel"]] = [n.replace("Pre", "Bln") for n in violin_dat["Channel"]]
+
+violin_order = ['500008_AC_Bln',
+                '500008_AC_Dil',
+                '500008_AC_Ag',
+                '500012_AC_Bln',
+                '500012_AC_Dil',
+                '500012_AC_Ag',
+                '500015_AC_Bln',
+                '500015_AC_Ag',
+                '500024_AC_Bln',
+                '500024_AC_Dil',
+                '500024_AC_Ag',
+                '500021_AA_Bln',
+                '500021_AA_Dil',
+                '500021_AA_Ag',
+                '500030_AA_Bln',
+                '500030_AA_Dil',
+                '500030_AA_Ag',
+                '500032_AA_Bln',
+                '500032_AA_Ag',
+                '500035_AA_Bln',
+                '500035_AA_Ag']
+
+
 fig, ax = plt.subplots(1)
-x = all_data.obs["n_genes"]
-y = all_data.obs["percent_mito"]
-_ = ax.hexbin(x, y, mincnt=1, xscale = "log")
-_ = ax.set_xticks([10, 100, 1000])
-_ = ax.get_xaxis().set_major_formatter(mpl.ticker.ScalarFormatter())
-_ = ax.axvline(500, color="red")
-_ = ax.axhline(30, color="red")
-_ = plt.xlabel("Number of genes")
-_ = plt.ylabel("percent mitochondrial UMIs")
+sns.violinplot(x = "Channel", y = "percent_mito", color = "grey", data = violin_dat, inner = None, scale = "width",
+               ax = ax, cut = 0, order = violin_order)
+for violin in ax.collections:
+    violin.set_alpha(0.8)
+_ = ax.axhline(y = 30, color = "red", ls = "--")
+labs = ax.get_xticklabels()
+_ = ax.set_xticklabels(labs, rotation=90)
+_ = ax.set_ylabel("% mitochondrial UMIs")
+figure = plt.gcf()
+figure.set_size_inches(4, 3)
+figure.tight_layout()
+figure
 ```
 
-<img src="figure_2_files/figure-markdown_github/unnamed-chunk-2-1.png" width="672" />
+<img src="figure_2_files/figure-markdown_github/unnamed-chunk-2-1.png" width="384" />
+
+``` python
+# Make a nicer violin plot - # genes
+violin_dat = all_data.obs[["Channel", "n_genes"]]
+violin_dat[["Channel"]] = [n.replace("ANA", "AC") for n in violin_dat["Channel"]]
+violin_dat[["Channel"]] = [n.replace("Pre", "Bln") for n in violin_dat["Channel"]]
+
+fig, ax = plt.subplots(1)
+sns.violinplot(x="Channel", y="n_genes", color="grey", data=violin_dat, inner=None, scale="width",
+               ax=ax, cut=0, order = violin_order)
+for violin in ax.collections:
+    violin.set_alpha(0.8)
+# sns.stripplot(x = "Channel", y = "percent_mito", color = "black", data = violin_dat,
+#               dodge = True, size = 1, ax = ax, zorder = 0)
+_ = ax.axhline(y=500, color="red", ls="--")
+# ax.set_yscale("log")
+labs = ax.get_xticklabels()
+_ = ax.set_xticklabels(labs, rotation=90)
+_ = ax.set_ylabel("# genes")
+figure = plt.gcf()
+figure.set_size_inches(4, 3)
+figure.tight_layout()
+figure
+```
+
+<img src="figure_2_files/figure-markdown_github/n_gene_plot-3.png" width="384" />
 
 Next we log-normalized the data, selected highly variable features and performed PCA.
 
@@ -52,7 +121,7 @@ Next we log-normalized the data, selected highly variable features and performed
 # pg.pca(all_data)
 ```
 
-To account for technical variability between samples, we used the Harmony algorithm to align the pricniple component scores. These adjust PCs were used for downstrseam leiden clustering and UMAP dimensionality reduction. Once we have the data in UMAP space, we can look at our QC metrics, along with our basic leiden clustering.
+To account for technical variability between samples, we used the Harmony algorithm to align the pricniple component scores. These adjusted PCs were used for downstrseam leiden clustering and UMAP dimensionality reduction. Once we have the data in UMAP space, we can look at our QC metrics, along with our basic leiden clustering. The first few lines here are commented out due to the stochasticity of the algorithms, but show which functions were used for our data processing. We then load in the resulting data object that was used for analyses in the manuscript to be able to show truly equivalent figures.
 
 ``` python
 # pg.run_harmony(all_data, n_jobs = 5)
@@ -60,30 +129,112 @@ To account for technical variability between samples, we used the Harmony algori
 # pg.diffmap(all_data, rep = "pca_harmony")
 # pg.leiden(all_data, rep = "pca_harmony")
 # pg.umap(all_data, rep = "pca_harmony")
-# pg.write_output("/home/nealpsmith/projects/medoff/data/all_data_harmonized.h5ad")
+# pg.write_output("/home/nealpsmith/projects/medoff/data/anndata_for_publication/all_data_harmonized.h5ad")
 
 # Read in the harmonized data
-harmonized_data = pg.read_input("/home/nealpsmith/projects/medoff/data/all_data_harmonized.h5ad")
+harmonized_data = pg.read_input("/home/nealpsmith/projects/medoff/data/anndata_for_publication/all_data_harmonized.h5ad")
+
 figure = sc.pl.umap(harmonized_data, color = ["n_genes", "percent_mito", "leiden_labels"],
                     cmap = colormap, return_fig = True, show = False, ncols = 2)
 figure.set_size_inches(11, 11)
 figure
 ```
 
-<img src="figure_2_files/figure-markdown_github/harmonize-3.png" width="1056" />
+<img src="figure_2_files/figure-markdown_github/harmonize-5.png" width="1056" />
 
 We can also now see that the data from the different subjects are well integrated and there aren't any obvious batch effects
 
 ``` python
+
 figure = sc.pl.umap(harmonized_data, color = ["id", "phenotype", "sample"],
-                    cmap = colormap, return_fig = True, show = False, ncols = 2)
-figure.set_size_inches(11, 11)
+                    cmap = colormap, return_fig = True, show = False,
+                    ncols = 2, wspace = 0.5)
+figure.set_size_inches(10, 10)
 figure
 ```
 
-<img src="figure_2_files/figure-markdown_github/umap_by_meta-5.png" width="1056" />
+<img src="figure_2_files/figure-markdown_github/umap_by_meta-7.png" width="960" />
 
-Now that the data is in UMAP space, we can use cannonical markers to try to define major lineages.
+With our high-quality cells in hand, we wanted to assess whether there were any samples that were outliers that could potentially affect downstream analyses. To do this, we performed PCA on pseudobulked samples that contained the sum of all counts for the high-quality cells for each sample in the dataset. As we can see below, there don't seem to be any major technical outliers. In fact, when looking at PC1 and PC2, samples seem to segregate based on the conditions and groups, suggesting there is biologically-meaningful variability in the data.
+
+``` python
+
+# Need to make a pseudobulk matrix on a per-sample basis (not differentiating by lineage) for PCA
+raw_data = all_data[harmonized_data.obs_names]
+raw_data = raw_data[:, harmonized_data.var_names]
+raw_data.obs = harmonized_data.obs[["Channel"]]
+raw_sum_dict = {}
+cell_num_dict = {}
+for samp in set(raw_data.obs["Channel"]):
+    dat = raw_data[(raw_data.obs["Channel"] == samp)]
+    if len(dat) < 2:
+        continue
+    cell_num_dict["samp_{samp}".format(samp=samp)] = len(dat)
+    count_sum = np.array(dat.X.sum(axis=0)).flatten()
+    raw_sum_dict["samp_{samp}".format(samp=samp)] = count_sum
+count_mtx = pd.DataFrame(raw_sum_dict, index=raw_data.var.index.values)
+
+meta_df = pd.DataFrame(cell_num_dict, index=["n_cells"]).T
+meta_df["sample"] = [name.split("_")[3] for name in meta_df.index.values]
+meta_df["phenotype"] = [name.split("_")[2] for name in meta_df.index.values]
+meta_df["id"] = ["_".join(name.split("_")[0:2]) for name in meta_df.index.values]
+```
+
+<img src="figure_2_files/figure-markdown_github/make_pseudobulk-9.png" width="960" />
+
+``` r
+library(tidyverse)
+library(magrittr)
+library(glue)
+library(ggpubr)
+set.seed(4)
+count_mtx <- reticulate::py$count_mtx
+meta_data <- reticulate::py$meta_df
+
+meta_data %<>%
+  rownames_to_column(var = "pseudo_samp")
+meta_data$sample[meta_data$sample == "Pre"] <- "Bln"
+meta_data$phenotype[meta_data$phenotype == "ANA"] <- "AC"
+# Lets make a log-ned matrix
+# Now need to log-norm
+norm_counts <- apply(count_mtx, 2, function(c){
+  n_total <- sum(c)
+  per_100k <- (c * 1000000) / n_total
+  return(per_100k)
+})
+
+norm_counts <- log1p(norm_counts)
+
+pca_data = norm_counts
+pca_data <- t(pca_data)
+pca <- prcomp(pca_data, scale. = TRUE)
+
+pca_plot <- data.frame(pca$x) %>%
+  rownames_to_column(var = "pseudo_samp") %>%
+  dplyr::left_join(meta_data, by = "pseudo_samp")
+
+
+col_list <- list("sample" = c("Ag" = '#1f77b4', "Dil" = '#ff7f0e', "Bln" = '#2ca02c'),
+                 "phenotype" = c("AA" = "#FF8000", "AC" = "#40007F"))
+plot_list <- list()
+for (f in c("sample", "phenotype")){
+  pc1_var <- round(summary(pca)[["importance"]]["Proportion of Variance","PC1"] * 100)
+  pc2_var <-  round(summary(pca)[["importance"]]["Proportion of Variance","PC2"] * 100)
+  p <- ggplot(pca_plot, aes_string(x = "PC1", y = "PC2", fill = f)) +
+    geom_point(pch = 21, size = 5) +
+    scale_fill_manual(values = col_list[[f]]) +
+    xlab(glue("PC1 ({pc1_var}%)")) +
+    ylab(glue("PC2 ({pc2_var}%)")) +
+    theme_classic(base_size = 20)
+  plot_list <- c(plot_list, list(p))
+}
+
+ggarrange(plotlist = plot_list)
+```
+
+![](figure_2_files/figure-markdown_github/overall_pca-11.png)
+
+Now that the data is in UMAP space, we can use cannonical markers to try to define major lineages. We used these cannonical markers along with other DEG info found in our supplemental material to annotate our lineages.
 
 ``` python
 
@@ -94,7 +245,7 @@ figure = sc.pl.umap(harmonized_data, color = lin_genes,
 figure.set_size_inches(10, 7)
 ```
 
-<img src="figure_2_files/figure-markdown_github/marker_genes-7.png" width="960" />
+<img src="figure_2_files/figure-markdown_github/marker_genes-1.png" width="960" />
 
 Using all of this info (along with other DEG info), we can assign the clusters to our major lineages.
 
@@ -107,9 +258,9 @@ cell_clust_dict = {
         "5" : "Epithelial cells",
         "6" : "Epithelial cells",
         "7" : "Epithelial cells",
-        "8" : "NK cells",
-        "9" : "Epithelial cells",
-        "10" : "MNP",
+        "8" : "Epithelial cells",
+        "9" : "MNP",
+        "10" : "CD8 T cells",
         "11" : "B cells",
         "12" : "CD8 T cells",
         "13" : "MNP",
@@ -117,9 +268,10 @@ cell_clust_dict = {
         "15" : "CD8 T cells",
         "16" : "Mast cells",
         "17" : "Epithelial cells",
-        "18" : "Epithelial cells",
+        "18" : "NK cells",
         "19" : "Epithelial cells",
-        "20" : "Epithelial cells"
+        "20" : "Epithelial cells",
+        "21" : "Epithelial cells"
     }
 harmonized_data.obs["cell_set"] = [cell_clust_dict[clust] for clust in harmonized_data.obs["leiden_labels"]]
 
@@ -128,7 +280,7 @@ figure.set_size_inches(5, 5)
 figure
 ```
 
-<img src="figure_2_files/figure-markdown_github/lineage_umap-9.png" width="480" />
+<img src="figure_2_files/figure-markdown_github/lineage_umap-3.png" width="480" />
 
 Looking at the major lineage markers in a dot plot, we can appreciate how specific they are for our new assignments.
 
@@ -148,16 +300,15 @@ figure.set_size_inches(8, 6)
 figure
 ```
 
-<img src="figure_2_files/figure-markdown_github/dotplot-11.png" width="768" />
+<img src="figure_2_files/figure-markdown_github/dotplot-5.png" width="768" />
 
 # Marker genes
 
-In addition to cannonical gene visualization, we wanted to create unbiased gene lists for our defined lineages. Here, we selected genes that had an AUROC &gt; 0.75 or were significant by pseudobulk analyses (these are explained in more detail in the figure 2 and 3 notebooks). We can visualize these markers with a heatmap.
+In addition to cannonical gene visualization, we wanted to create unbiased gene lists for our defined lineages. Here, we selected genes that had an AUROC &gt; 0.75 or were significant by pseudobulk analyses (these are explained in more detail in the figure 3 and 4 notebooks). We can visualize these markers with a heatmap.
 
 ``` python
 
 import numpy as np
-import seaborn as sns
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 import matplotlib as mpl
 
@@ -290,7 +441,7 @@ _ = plt.title("top genes for every cluster")
 plt.show()
 ```
 
-<img src="figure_2_files/figure-markdown_github/unordered_heatmap-13.png" width="960" /><img src="figure_2_files/figure-markdown_github/unordered_heatmap-14.png" width="960" />
+<img src="figure_2_files/figure-markdown_github/unordered_heatmap-7.png" width="960" /><img src="figure_2_files/figure-markdown_github/unordered_heatmap-8.png" width="960" />
 
 To make things more readable, we also made a heatmap where we kept the columns clustered such that phenotypically similar clusters were grouped together, but manually ordered the rows.
 
@@ -365,13 +516,13 @@ plt.title("top genes for every cluster")
 plt.show()
 ```
 
-<img src="figure_2_files/figure-markdown_github/ordered_heatmap-17.png" width="960" />
+<img src="figure_2_files/figure-markdown_github/ordered_heatmap-11.png" width="960" />
 
 ``` python
 plt.close()
 ```
 
-<img src="figure_2_files/figure-markdown_github/ordered_heatmap-18.png" width="960" />
+<img src="figure_2_files/figure-markdown_github/ordered_heatmap-12.png" width="960" />
 
 Finally, we wanted to make a publication-ready figure using the wonderful `ComplexHeatmap` package, where we can add some annotations for each cluster and add spaces between clusters to make it even more readable.
 
@@ -463,7 +614,7 @@ draw(heatmap_list, heatmap_legend_list =lgd_list, padding = unit(c(0.5, 0.5, 2, 
      cluster_row_slices = FALSE)
 ```
 
-![](figure_2_files/figure-markdown_github/nice_heatmap-21.png)
+![](figure_2_files/figure-markdown_github/nice_heatmap-15.png)
 
 # Cell Abundance analyses
 
@@ -480,9 +631,7 @@ figure.set_size_inches(10, 7)
 
 <img src="figure_2_files/figure-markdown_github/embedding_density-1.png" width="960" />
 
-To determine which clusters were associated with particular group at a given condition, we used a mixed-effects association logistic regression model similar to that described by Fonseka et al. We fit a logistic regression model for each cell cluster. Each cluster was modelled independently as follows : `cluster ~ 1 + condition:group + condition + group + (1 | id)`
-
-The least-squares means of the factors in the model were calculated and all pairwise contrasts between the means of the groups at each condition (e.g. AA vs AC within baseline, AA vs AC within allergen, etc.) were compared. The OR with confidence interval for each sample/condition combination were plotted.
+We Can visualize the lineage percents as stacked bars, where each bar represents the percent of the sample associated with each lineage.
 
 ``` python
 cell_info = harmonized_data.obs
@@ -491,8 +640,113 @@ cell_info = harmonized_data.obs
 <img src="figure_2_files/figure-markdown_github/cell_info-3.png" width="960" />
 
 ``` r
+clust_df <- reticulate::py$cell_info
+
+clust_df$id <- as.character(clust_df$id)
+clust_df$phenotype[clust_df$phenotype == "ANA"] <- "AC"
+```
+
+    ## Warning in `[<-.factor`(`*tmp*`, clust_df$phenotype == "ANA", value =
+    ## structure(c(NA, : invalid factor level, NA generated
+
+``` r
+plot_df <- clust_df %>%
+  dplyr::select(id, sample, cell_set_clean, phenotype) %>%
+  group_by(id, sample, phenotype, cell_set_clean) %>%
+  summarise(n_cells = n()) %>%
+  group_by(id, sample) %>%
+  mutate(tot_cells = sum(n_cells)) %>%
+  mutate(perc_cells = n_cells / tot_cells * 100)
+```
+
+    ## `summarise()` has grouped output by 'id', 'sample', 'phenotype'. You can override using the `.groups` argument.
+
+``` r
+# plot_df$cell_set_clean[plot_df$cell_set_clean == "Myeloid cells"] <- "MNP"
+plot_df$sample <- as.character(plot_df$sample)
+plot_df$sample[plot_df$sample == "Pre"] <- "Bln"
+plot_df$sample <- factor(plot_df$sample, levels = c("Bln", "Dil", "Ag"))
+plot_df$phenotype <- factor(plot_df$phenotype, levels = c("AA", "AC"))
+plot_df$id <- factor(plot_df$id, levels = unique(arrange(plot_df, phenotype)$id))
+
+colors <- c("B cells" =  "#1f77b4", "CD4 T cells" = "#ff7f0e", "CD8 T cells" = "#2ca02c",
+            "Epithelial cells" = "#d62728", "Mast cells" = "#9467bd", "MNP" = "#8c564b", "NK cells" = "#e377c2")
+
+ggplot(plot_df[plot_df$sample != "Dil",], aes(x = sample, fill = cell_set_clean, y = perc_cells)) + geom_bar(stat = "identity") +
+  facet_grid(~id, scales = "free_x") +
+  scale_fill_manual(values = colors) +
+  theme_bw(base_size = 20)
+```
+
+![](figure_2_files/figure-markdown_github/lin_stacks-5.png)
+
+A better way to compare the data is to look at the % of cells in each lineage for each donor, grouped by disease group. We show that below.
+
+``` r
+clust_df <- reticulate::py$cell_info
+clust_df$phenotype <- as.character(clust_df$phenotype)
+clust_df$phenotype[clust_df$phenotype == "ANA"] <- "AC"
+clust_df$phenotype <- factor(clust_df$phenotype, levels = c("AA", "AC"))
+clust_df$sample <- factor(clust_df$sample, levels = c("Pre", "Dil", "Ag"))
+
+clust_df$cell_set_clean <- gsub(" ", "_", clust_df$cell_set_clean)
+clust_df$cell_set_clean[clust_df$cell_set_clean == "Myeloid_cells"] <- "MNP"
+perc_df <- clust_df %>%
+  dplyr::select(id, phenotype, sample, cell_set_clean) %>%
+  group_by(id, phenotype, sample, cell_set_clean) %>%
+  dplyr::summarise(n_cells = n()) %>%
+  dplyr::group_by(id, phenotype, sample) %>%
+  mutate(tot = sum(n_cells)) %>%
+  mutate(perc = n_cells / tot * 100)
+```
+
+    ## `summarise()` has grouped output by 'id', 'phenotype', 'sample'. You can override using the `.groups` argument.
+
+``` r
+plot_df <- perc_df[perc_df$sample %in% c("Pre", "Ag"),]
+plot_df$sample <- as.character(plot_df$sample)
+plot_df$sample[plot_df$sample == "Pre"] <- "Bln"
+plot_df$sample <- factor(plot_df$sample, levels = c("Bln", "Ag"))
+plot_df$cell_set_clean[plot_df$cell_set_clean == "Epithelial_cells"] <- "AEC"
+plot_df$cell_set_clean <- sapply(plot_df$cell_set_clean, function(x) gsub("_", " ", x))
+plot_df$cell_set_clean <- factor(plot_df$cell_set_clean, levels = c("AEC", "CD8 T cells", "CD4 T cells", "MNP",
+                                                                    "B cells", "Mast cells", "NK cells"))
+plot_df$phenotype <- factor(plot_df$phenotype, levels = c("AC", "AA"))
+big_cl <-  c("AEC", "CD8 T cells", "CD4 T cells", "MNP")
+
+big_clusts = plot_df[plot_df$cell_set_clean %in% big_cl,]
+
+p1 <- ggplot(big_clusts, aes(x = phenotype, y = perc, fill = phenotype, group = interaction(phenotype, sample), alpha = sample)) +
+  geom_boxplot(outlier.shape=NA, width=1) +
+  geom_jitter(pch = 21, position = position_jitterdodge(), aes(fill = phenotype), alpha = 1) +
+  scale_fill_manual(values = c("#40007F", "#FF8000")) +
+  scale_alpha_manual(values = c(0.8, 0.5)) +
+  scale_y_continuous(limits = c(0, 100), breaks = seq(0, 100, by = 20)) +
+  facet_grid(~cell_set_clean, scales = "free_y") +
+  xlab("") + ylab("% sample") +
+  theme_classic(base_size = 17)
+small_clusts = plot_df[!plot_df$cell_set_clean %in% big_cl,]
+p2 <- ggplot(small_clusts, aes(x = phenotype, y = perc, fill = phenotype, group = interaction(phenotype, sample), alpha = sample)) +
+  geom_boxplot(outlier.shape=NA, width=1 *0.75) +
+  geom_jitter(pch = 21, position = position_jitterdodge(), aes(fill = phenotype), alpha = 1) +
+  scale_fill_manual(values = c("#40007F", "#FF8000")) +
+  scale_alpha_manual(values = c(0.8, 0.5)) +
+  scale_y_continuous(limits = c(0, 15), breaks = seq(0, 15, by = 5)) +
+  facet_grid(~cell_set_clean, scales = "free_y") +
+  xlab("") + ylab("% sample") +
+  # scale_y_log10() +
+  theme_classic(base_size = 17)
+ggarrange(p1, p2, common.legend = TRUE, nrow = 2, ncol = 1)
+```
+
+![](figure_2_files/figure-markdown_github/lin_percs_by_pheno-1.png)
+
+To determine which clusters were associated with particular disease group at a given condition, we used a mixed-effects association logistic regression model similar to that described by Fonseka et al. We fit a logistic regression model for each cell cluster. Each cluster was modelled independently as follows : `cluster ~ 1 + condition:group + condition + group + (1 | id)`
+
+The least-squares means of the factors in the model were calculated and all pairwise contrasts between the means of the groups at each condition (e.g. AA vs AC within baseline, AA vs AC within allergen, etc.) were compared. The OR with confidence interval for each sample/condition combination were plotted.
+
+``` r
 library(lme4)
-library(ggplot2)
 library(emmeans)
 
 get_abund_info <- function(dataset, cluster, contrast, random_effects = NULL, fixed_effects = NULL){
@@ -576,8 +830,8 @@ plot_contrasts <- function(d, x_breaks_by = 1, wrap_ncol = 6, y_ord = FALSE) {
     ) +
     scale_color_manual(
       name = "P < 0.05",
-      values = c("#FF8000", "#40007F", "grey60"),
-      breaks = c("AA", "ANA")
+      values = c("#FF8000", "grey60"),
+      breaks = c("AA")
     ) +
     scale_x_continuous(
       breaks = log(c(0.125, 0.5, 1, 2, 4)),
@@ -611,29 +865,16 @@ abund_info <- get_abund_info(clust_df, cluster = clust_df$cell_set_clean,
                               contrast = "sample:phenotype",
                               random_effects = "id",
                               fixed_effects = c("sample", "phenotype"))
-```
 
-    ## Since 'object' is a list, we are using the contrasts already present.
-    ## Since 'object' is a list, we are using the contrasts already present.
-
-    ## Warning in checkConv(attr(opt, "derivs"), opt$par, ctrl = control$checkConv, :
-    ## Model failed to converge with max|grad| = 0.00229565 (tol = 0.002, component 1)
-
-    ## Since 'object' is a list, we are using the contrasts already present.
-    ## Since 'object' is a list, we are using the contrasts already present.
-    ## Since 'object' is a list, we are using the contrasts already present.
-    ## Since 'object' is a list, we are using the contrasts already present.
-    ## Since 'object' is a list, we are using the contrasts already present.
-
-``` r
 plot_df <- do.call(rbind, abund_info)
-plot_df$direction <- ifelse(plot_df$estimate > 0, "AA", "ANA")
-
+plot_df$direction <- ifelse(plot_df$estimate > 0, "AA", "AC")
+# plot_df$direction <- factor(plot_df$direction, levels = c("AA", "AC"))
 plot_df$cluster <- factor(gsub("cluster", "", plot_df$cluster))
 plot_df$sig <- ifelse(plot_df$p.value < 0.05, plot_df$direction, "non_sig")
+plot_df <- plot_df[plot_df$sample != "Dil",]
 
-plot_df$sample <- factor(plot_df$sample, levels = c("Pre", "Dil", "Ag"))
+plot_df$sample <- factor(plot_df$sample, levels = c("Pre", "Ag"))
 plot_contrasts(plot_df)
 ```
 
-![](figure_2_files/figure-markdown_github/diff_abund-5.png)
+![](figure_2_files/figure-markdown_github/diff_abund-1.png)
