@@ -90,10 +90,12 @@ def _collect_samples(W, resolution, n_cells, resamp_size, true_class, random_sta
 ```
 
 ```{python, rand_plot}
+
 import matplotlib.pyplot as plt
 import seaborn as sns
 
 epithelial_harmonized = pg.read_input("/home/nealpsmith/projects/medoff/data/anndata_for_publication/epithelial_harmonized.h5ad")
+
 
 # rand_indx_dict = rand_index_plot(W = epithelial_harmonized.uns["W_pca_harmony"],
 #                                       resolutions  = [0.3, 0.5, 0.7, 0.9, 1.1, 1.3, 1.5, 1.7, 1.9],
@@ -104,19 +106,20 @@ epithelial_harmonized = pg.read_input("/home/nealpsmith/projects/medoff/data/ann
 # plot_df = plot_df.melt(id_vars="index")
 # plot_df.to_csv(os.path.join(file_path(), "data", "ari_plots", "epithelial_harmonized_ARI.csv"))
 plot_df = pd.read_csv("/home/nealpsmith/projects/medoff/data/ari_plots/epithelial_harmonized_ARI.csv")
-fig, ax = plt.subplots(1)
-_ = sns.boxplot(x="index", y="value", data=plot_df, ax = ax)
-for box in ax.artists:
-    box.set_facecolor("grey")
-ax.artists[6].set_facecolor("red") # The one we chose!
-ax.spines['right'].set_visible(False)
-ax.spines['top'].set_visible(False)
-ax.tick_params(axis='both', which='major', labelsize=15)
-_ = ax.set_ylabel("Adjusted Rand index", size = 20)
-_ = ax.set_xlabel("leiden resolution", size = 20)
-_ = plt.axhline(y = 0.9, color = "black", linestyle = "--")
-fig.tight_layout()
-fig
+print(plot_df)
+# fig, ax = plt.subplots(1)
+# _ = sns.boxplot(x="index", y="value", data=plot_df, ax = ax)
+# for box in ax.artists:
+#     box.set_facecolor("grey")
+# ax.artists[6].set_facecolor("red") # The one we chose!
+# ax.spines['right'].set_visible(False)
+# ax.spines['top'].set_visible(False)
+# ax.tick_params(axis='both', which='major', labelsize=15)
+# _ = ax.set_ylabel("Adjusted Rand index", size = 20)
+# _ = ax.set_xlabel("leiden resolution", size = 20)
+# _ = plt.axhline(y = 0.9, color = "black", linestyle = "--")
+# fig.tight_layout()
+# fig
 ```
 
 Based on this rand index approach, we can see that a leiden resolution of 1.5 is the highest resolution where the
@@ -312,7 +315,7 @@ top_gene_df = top_gene_df.replace(np.nan, "")
 ```
 
 ```{r, show_auc_and_pseudo}
-kable(reticulate::py$top_gene_df, caption = "genes with AUC> 0.75 or pseudo q < 0.05")
+# kable(reticulate::py$top_gene_df, caption = "genes with AUC> 0.75 or pseudo q < 0.05")
 ```
 
 
@@ -648,10 +651,26 @@ annotation_dict = { "1" : "Early ciliated",
                     "14" : "Serous"
                     }
 
+color_dict = { "Early ciliated" : "#ffbb78",
+               "Ciliated" : "#ff7f0e",
+               "Mucous-ciliated" : "#b5bd61",
+               "Hillock" : "#17becf",
+               "Deuterosomal" : "#98df8a",
+               "Cycling basal" : "#aec7e8",
+               "Basal" : "#aa40fc",
+               "Suprabasal" : "#279e68",
+               "quiesBasal" : "#8c564b",
+               "Ionocyte" : "#ff9896",
+               "Goblet" : "#d62728",
+               "quiesGoblet" : "#1f77b4",
+               "Club" : "#e377c2",
+               "Serous" : "#c5b0d5"
+               }
+
 epithelial_harmonized.obs["annotation"] = [annotation_dict[c] for c in epithelial_harmonized.obs["new_clusters"]]
-figure = sc.pl.umap(harmonized_data, color = [""],
-                    cmap = colormap, return_fig = True, show = False, ncols = 2)
-figure.set_size_inches(11, 11)
+figure = sc.pl.umap(epithelial_harmonized, color = ["annotation"],
+                    palette = color_dict, return_fig = True, show = False, legend_loc = "on data")
+figure.set_size_inches(8, 8)
 figure
 
 ```
@@ -667,7 +686,7 @@ When we compare the number of DEGs from Pre:Ag between AA and AC, we see that AA
 epithelial cells change much more when exposed to allergen in AA than AC.
 
 ```{r deseq2_res, warning = FALSE, message = FALSE}
-# library(DESeq2)
+library(DESeq2)
 # library(glue)
 # library(tidyverse)
 #
@@ -970,3 +989,339 @@ other clusters.
 # plt.show()
 ```
 
+Given Hillock cells represent a novel cell type in humans, we wanted to perform general differential expression
+comparing these cells in AA vs. AC.  Below, we show that there are a few differentially expressed genes between these
+cells in our disease groups.
+
+```{r hillock_aa_vs_ac, fig.width = 5, fig.height = 5}
+
+library(ggrepel)
+
+count_mtx <- as.matrix(read.csv("/home/nealpsmith/projects/medoff/data/pseudobulk_epithelial_harmonized_counts_for_github.csv",
+                                row.names = 1))
+
+meta_data <- read.csv("/home/nealpsmith/projects/medoff/data/pseudobulk_epithelial_harmonized_meta_for_github.csv", row.names = 1)
+meta_data$phenotype[meta_data$phenotype == "ANA"] <- "AC"
+meta_data$phenotype <- factor(meta_data$phenotype, levels = c("AC", "AA"))
+
+
+meta_temp <-meta_data[meta_data$cluster == 4,] # Hillock cells originally labelled as cluster 9
+count_temp <- count_mtx[,rownames(meta_temp)]
+
+n_samp <- rowSums(count_temp != 0)
+count_temp <- count_temp[n_samp > round(nrow(meta_temp) / 2),]
+
+
+stopifnot(rownames(meta_temp) == colnames(count_temp))
+
+dds <- DESeqDataSetFromMatrix(countData = count_temp,
+                              colData = meta_temp,
+                              design = ~phenotype)
+
+dds <- DESeq(dds)
+res <- results(dds)
+plot_data <- as.data.frame(res)
+plot_data <- plot_data[!is.na(plot_data$padj),]
+plot_data$gene <- rownames(plot_data)
+
+ggplot(plot_data, aes(x = log2FoldChange, y = -log10(pvalue))) +
+  geom_point(data = plot_data[plot_data$padj > 0.1,], color = "grey") +
+  geom_point(data = plot_data[plot_data$log2FoldChange > 0 & plot_data$padj < 0.1,], color = "#FF8000") +
+  geom_point(data = plot_data[plot_data$log2FoldChange < 0 & plot_data$padj < 0.1,], color = "#40007F") +
+  geom_text_repel(data = plot_data[plot_data$padj < 0.1,], aes(label = gene)) +
+  theme_classic()
+
+```
+
+#Differential Abundance analysis
+
+We can look for abundance differences between groups and conditions.  First, we used stacked bars to assess the amount
+of the total cells each epithelial cluster represented in every sample.
+
+```{python dataframe}
+
+cell_info = epithelial_harmonized.obs
+all_cell_info = pg.read_input("/home/nealpsmith/projects/medoff/data/anndata_for_publication/all_data_harmonized.h5ad")
+all_cell_info = all_cell_info.obs
+
+```
+
+```{r stacked_bars, fig.width = 12, fig.height = 4}
+
+cols <- c("Early ciliated" = "#ffbb78",
+"Ciliated" = "#ff7f0e",
+"Mucous-ciliated" = "#b5bd61",
+"Hillock" = "#17becf",
+"Deuterosomal" = "#98df8a",
+"Cycling basal" = "#aec7e8",
+"Basal" = "#aa40fc",
+"Suprabasal" = "#279e68",
+"quiesBasal" = "#8c564b",
+"Ionocyte" = "#ff9896",
+"Goblet" = "#d62728",
+"quiesGoblet" = "#1f77b4",
+"Club" = "#e377c2",
+"Serous" = "#c5b0d5"
+)
+
+all_cell_info <- reticulate::py$all_cell_info
+epi_info <- reticulate::py$cell_info
+
+
+cells_per_donor <- all_cell_info %>%
+  dplyr::select(id, sample, phenotype) %>%
+  group_by(id, sample, phenotype) %>%
+  summarise(n_total = n())
+
+epi_counts <- epi_info %>%
+  dplyr::select(id, sample, annotation, phenotype) %>%
+  group_by(id, sample, annotation, phenotype) %>%
+  summarise(n_cells = n())
+
+
+plot_df <- epi_counts %>%
+  dplyr::left_join(cells_per_donor, by = c("id", "sample", "phenotype")) %>%
+  mutate(perc_cells = n_cells / n_total * 100)
+
+plot_df <- plot_df[plot_df$sample != "Dil",]
+plot_df$sample <- as.character(plot_df$sample)
+plot_df$sample[plot_df$sample == "Pre"] <- "Bln"
+plot_df$sample <- factor(plot_df$sample, levels = c("Bln", "Ag"))
+plot_df$annotation <- factor(plot_df$annotation)
+
+ggplot(plot_df, aes(x = sample, fill = annotation, y = perc_cells)) + geom_bar(stat = "identity") +
+  facet_grid(~id) +
+  ylab("percent") +
+  scale_fill_manual(values = cols) +
+  scale_y_continuous(limits = c(0, 60)) +
+  theme_classic(base_size = 20)
+
+```
+
+
+```{r perc_plots, fig.width = 12, fig.height = 6}
+
+plot_df <- epi_counts %>%
+  group_by(id, sample) %>%
+  mutate(total_cells = sum(n_cells)) %>%
+  mutate(percent = n_cells / total_cells * 100)
+plot_df$phenotype <- as.character(plot_df$phenotype)
+plot_df$phenotype[plot_df$phenotype == "ANA"] <- "AC"
+plot_df$phenotype <- factor(plot_df$phenotype, levels = c("AC", "AA"))
+
+order <- plot_df %>%
+  group_by(annotation) %>%
+  summarise(n_total = sum(n_cells)) %>%
+  arrange(desc(n_total)) %>%
+  .$annotation
+
+plot_df$annotation <- factor(plot_df$annotation, levels = order)
+
+plot_df$sample <- as.character(plot_df$sample)
+plot_df <- plot_df[plot_df$sample != "Dil",]
+plot_df$sample[plot_df$sample == "Pre"] <- "Bln"
+plot_df$sample <- factor(plot_df$sample, levels = c("Bln", "Ag"))
+
+ggplot(plot_df, aes(x = annotation, y = percent, fill = phenotype)) +
+        geom_boxplot() +
+        scale_fill_manual(values = c("#40007F", "#FF8000")) +
+        scale_y_log10() +
+        annotation_logticks(side = "l") +
+        facet_wrap(~sample) +
+        ylab("Percent of AECs") +
+        xlab("cluster") +
+        theme_classic(base_size = 20) +
+        theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+```
+
+```{r n_cells, fig.width = 12, fig.height = 6}
+
+
+ggplot(plot_df, aes(x = annotation, y = n_cells, fill = phenotype)) +
+        geom_boxplot() +
+        scale_fill_manual(values = c("#40007F", "#FF8000")) +
+        scale_y_log10() +
+        annotation_logticks(side = "l") +
+        facet_wrap(~sample) +
+        ylab("Number of AECs") +
+        xlab("cluster") +
+        theme_classic(base_size = 20) +
+        theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+```
+
+
+To determine which clusters were associated with particular disease group at a given condition, we used a mixed-effects
+association logistic regression model similar to that described by Fonseka et al. We fit a logistic regression model for
+each cell cluster. Each cluster was modelled independently as follows :
+```cluster ~ 1 + condition:group + condition + group + (1 | id)```
+
+The least-squares means of the factors in the model were calculated and all pairwise contrasts between the means of the
+groups at each condition (e.g. AA vs AC within baseline, AA vs AC within allergen, etc.) were compared. The OR with
+confidence interval for each sample/condition combination were plotted.
+
+```{r disease_association}
+
+library(lme4)
+library(emmeans)
+
+# A function to perform the mixed-effects logistic regression modelling, returning, p-values, odds-ratio and confidence intervals
+get_abund_info <- function(dataset, cluster, contrast, random_effects = NULL, fixed_effects = NULL){
+  # Generate design matrix from cluster assignments
+  cluster <- as.character(cluster)
+  designmat <- model.matrix(~ cluster + 0, data.frame(cluster = cluster))
+  dataset <- cbind(designmat, dataset)
+  # Create output list to hold results
+  res <- vector(mode = "list", length = length(unique(cluster)))
+  names(res) <- attributes(designmat)$dimnames[[2]]
+
+  # Create model formulas
+  model_rhs <- paste0(c(paste0(fixed_effects, collapse = " + "),
+                        paste0("(1|", random_effects, ")", collapse = " + ")),
+                      collapse = " + ")
+
+  # Initialize list to store model objects for each cluster
+  cluster_models <- vector(mode = "list",
+                           length = length(attributes(designmat)$dimnames[[2]]))
+  names(cluster_models) <- attributes(designmat)$dimnames[[2]]
+
+  for (i in seq_along(attributes(designmat)$dimnames[[2]])) {
+    test_cluster <- attributes(designmat)$dimnames[[2]][i]
+
+    # Make it a non-intercept model to get odds for each variable
+    full_fm <- as.formula(paste0(c(paste0(test_cluster, " ~ 1 + ", contrast, " + "),
+                                   model_rhs), collapse = ""))
+
+    full_model <- lme4::glmer(formula = full_fm, data = dataset,
+                              family = binomial, nAGQ = 1, verbose = 0,
+                              control = glmerControl(optimizer = "bobyqa"))
+
+    pvals <-lsmeans(full_model, pairwise ~ "phenotype | sample")
+
+    p_val_df <- summary(pvals$contrasts)
+    p_val_df$cluster <- test_cluster
+
+    ci <- eff_size(pvals, sigma = sigma(full_model), edf = df.residual(full_model))
+    ci_df <- summary(ci) %>%
+    dplyr::select(sample, asymp.LCL, asymp.UCL)
+    ci_df$cluster <- test_cluster
+
+    info_df <- left_join(p_val_df, ci_df, by = c("sample", "cluster"))
+
+    cluster_models[[i]] <- info_df
+
+  }
+  return(cluster_models)
+}
+
+# A function to make a forest plot for the differential abundance analyses
+# plot_contrasts <- function(d, x_breaks_by = 1, wrap_ncol = 6, y_ord = FALSE) {
+#   # if (y_ord != FALSE){
+#   #   d$cluster <- factor(d$cluster, levels = y_ord)
+#   # }
+#   ggplot() +
+#     annotate(
+#       geom = "rect",
+#       xmin = -Inf,
+#       xmax = Inf,
+#       ymin = seq(from = 1, to = length(unique(d$cluster)), by = 2) - 0.5,
+#       ymax = seq(from = 1, to = length(unique(d$cluster)), by = 2) + 0.5,
+#       alpha = 0.2
+#     ) +
+#     geom_vline(xintercept = 0, size = 0.2) +
+#     geom_errorbarh(
+#       data = d,
+#       mapping = aes(
+#         xmin = asymp.LCL, xmax = asymp.UCL, y = cluster,
+#         color = sig
+#       ),
+#       height = 0
+#     ) +
+#     geom_point(
+#       data = d,
+#       mapping = aes(
+#         x = estimate, y = cluster,
+#         color = sig
+#       ),
+#       size = 3
+#     ) +
+#     scale_color_manual(
+#       name = "P < 0.05",
+#       values = c("#FF8000", "#40007F", "grey60"),
+#       breaks = c("AA", "ANA")
+#     ) +
+#     scale_x_continuous(
+#       breaks = log(c(0.125, 0.5, 1, 2, 4)),
+#       labels = function(x) exp(x)
+#     ) +
+#     scale_y_discrete(
+#       # expand = c(0, 0),
+#       # breaks = seq(1, length(unique(d$cluster))),
+#       labels = levels(plot_df$cluster),
+#     ) +
+#     # annotation_logticks(sides = "b") +
+#     expand_limits(y = c(0.5, length(unique(d$cluster)) + 0.5)) +
+#     # facet_grid(~ GeneName) +
+#     facet_wrap(~ sample, ncol = wrap_ncol) +
+#     theme_classic() +
+#     theme(
+#       strip.text = element_text(face = "italic"),
+#       text = element_text(size = 15)
+#     ) +
+#     labs(
+#       title = "contrasts by sample",
+#       x = "Odds Ratio",
+#       y = "cluster"
+#     )
+# }
+
+clust_df <- reticulate::py$cell_info
+
+abund_info <- get_abund_info(clust_df, cluster = clust_df$new_clusters,
+                            contrast = "sample:phenotype",
+                            random_effects = "id",
+                            fixed_effects = c("sample", "phenotype"))
+
+plot_df <- do.call(rbind, abund_info)
+plot_df$direction <- ifelse(plot_df$estimate > 0, "AA", "ANA")
+
+plot_df$cluster <- as.numeric(gsub("cluster", "", plot_df$cluster))
+plot_df$cluster <- factor(plot_df$cluster)
+# Add the annotations
+annotations <- clust_df %>%
+  dplyr::select(new_clusters, annotation) %>%
+  distinct()
+plot_df <- plot_df %>%
+  left_join(annotations, by = c("cluster" = "new_clusters"))
+
+plot_df$sig <- ifelse(plot_df$p.value < 0.05, plot_df$direction, "non_sig")
+plot_df$sig <- factor(plot_df$sig)
+plot_df$sample <- as.character(plot_df$sample)
+plot_df$sample[plot_df$sample == "Pre"] <- "Bln"
+plot_df$sample <- factor(plot_df$sample, levels = c("Bln", "Dil", "Ag"))
+plot_df$annotation <- as.character(plot_df$annotation)
+plot_df <- plot_df[plot_df$annotation != "Serous",]
+plot_df$annotation <- factor(plot_df$annotation, levels = rev(c("Early ciliated", "Ciliated", "Mucous-ciliated",
+                                                            "Hillock", "Deuterosomal", "Cycling basal", "Basal",
+                                                            "Suprabasal", "quiesBasal", "Ionocyte", "Goblet",
+                                                                "quiesGoblet", "Club")))
+print(unique(plot_df$annotation))
+
+ggplot(plot_df[plot_df$sample != "Dil",], aes(x = estimate, y = annotation, color = sig)) +
+  geom_point(size = 3) +
+  geom_errorbarh(mapping = aes(xmin = asymp.LCL, xmax = asymp.UCL, y = annotation, color = sig), height = 0) +
+  geom_vline(xintercept = 0, size = 0.2) +
+  scale_color_manual(
+      name = "P < 0.05",
+      values = c("#FF8000", "#40007F", "grey60"),
+      breaks = c("AA", "AC")
+    ) +
+    scale_x_continuous(
+      breaks = log(c(0.125, 0.5, 1, 2, 4)),
+      labels = function(x) exp(x)
+    ) +
+    # scale_y_discrete(labels = levels(plot_df$cluster)) +
+  xlab("Odds Ratio") +
+  facet_wrap(~sample) +
+  theme_classic(base_size = 20)
+```
