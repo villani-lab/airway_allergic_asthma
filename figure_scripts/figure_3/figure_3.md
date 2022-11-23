@@ -79,13 +79,15 @@ def _collect_samples(W, resolution, n_cells, resamp_size, true_class, random_sta
     return adjusted_rand_score(true_class, new_class)
 ```
 
-<img src="figure_3_files/figure-markdown_github/rand_func-1.png" width="576" />
+The code to perform this clustering stability is commented out due to the length of time it takes to run, but the function is above. Below I read in the results and plot them.
 
 ``` python
+
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-epithelial_harmonized = pg.read_input("/home/nealpsmith/projects/medoff/data/epithelial_harmonized_for_github.h5ad")
+epithelial_harmonized = pg.read_input("/home/nealpsmith/projects/medoff/data/anndata_for_publication/epithelial_harmonized.h5ad")
+
 
 # rand_indx_dict = rand_index_plot(W = epithelial_harmonized.uns["W_pca_harmony"],
 #                                       resolutions  = [0.3, 0.5, 0.7, 0.9, 1.1, 1.3, 1.5, 1.7, 1.9],
@@ -95,12 +97,17 @@ epithelial_harmonized = pg.read_input("/home/nealpsmith/projects/medoff/data/epi
 # plot_df = plot_df.reset_index()
 # plot_df = plot_df.melt(id_vars="index")
 # plot_df.to_csv(os.path.join(file_path(), "data", "ari_plots", "epithelial_harmonized_ARI.csv"))
-plot_df = pd.read_csv("/home/nealpsmith/projects/medoff/data/ari_plots/epithelial_harmonized_ARI.csv")
+```
+
+    ## 2022-11-21 11:36:15,536 - pegasus - INFO - Time spent on 'read_input' = 2.83s.
+
+``` python
+plot_df = pd.read_csv("/home/nealpsmith/projects/medoff/data/ari_plots/epithelial_harmonized_ARI.csv", index_col=0)
 fig, ax = plt.subplots(1)
 _ = sns.boxplot(x="index", y="value", data=plot_df, ax = ax)
 for box in ax.artists:
     box.set_facecolor("grey")
-ax.artists[6].set_facecolor("red") # The one we chose!
+# ax.artists[6].set_facecolor("red") # The one we chose!
 ax.spines['right'].set_visible(False)
 ax.spines['top'].set_visible(False)
 ax.tick_params(axis='both', which='major', labelsize=15)
@@ -111,7 +118,7 @@ fig.tight_layout()
 fig
 ```
 
-<img src="figure_3_files/figure-markdown_github/rand_plot-3.png" width="672" />
+<img src="figure_3_files/figure-markdown_github/rand_plot-1.png" width="672" />
 
 Based on this rand index approach, we can see that a leiden resolution of 1.5 is the highest resolution where the median ARI of all iterations was &gt; 0.9. Given this, we started our clustering at this resolution.
 
@@ -125,7 +132,7 @@ colormap = clr.LinearSegmentedColormap.from_list('gene_cmap', ["#d3d3d3" ,'#482c
 sc.pl.umap(epithelial_harmonized, color = ["leiden_labels"], legend_loc = "on data")
 ```
 
-<img src="figure_3_files/figure-markdown_github/clustering-5.png" width="672" /><img src="figure_3_files/figure-markdown_github/clustering-6.png" width="672" />
+<img src="figure_3_files/figure-markdown_github/clustering-3.png" width="672" /><img src="figure_3_files/figure-markdown_github/clustering-4.png" width="672" />
 
 After visually assessing many genes and through expert annotation, we could see that there was a small cluster of serous cells in cluster 1. Given we know that serous cells have a distinct biological function, we manually segregated these cells to be their own cluster. We can see this small cluster of cells by looking at the legacy markers AZGP1 and PRR4.
 
@@ -133,7 +140,7 @@ After visually assessing many genes and through expert annotation, we could see 
 sc.pl.umap(epithelial_harmonized, color = ["AZGP1", "PRR4"], cmap = colormap)
 ```
 
-<img src="figure_3_files/figure-markdown_github/serous_markers-9.png" width="1514" /><img src="figure_3_files/figure-markdown_github/serous_markers-10.png" width="1514" />
+<img src="figure_3_files/figure-markdown_github/serous_markers-7.png" width="1514" /><img src="figure_3_files/figure-markdown_github/serous_markers-8.png" width="1514" />
 
 We segregated these cells out by thier UMAP coordinates. Below is the new
 
@@ -172,11 +179,11 @@ sc.pl.umap(epithelial_harmonized, color = "new_clusters", legend_loc = "on data"
 # epithelial_harmonized.uns["new_clusters_colors"] = epithelial_harmonized.uns["new_clusters_colors"][10, 1, 7, 8, 11, 9, 4, 2, 5, 12, 3, 0, 6, 13]
 ```
 
-<img src="figure_3_files/figure-markdown_github/segregate_serous-13.png" width="672" /><img src="figure_3_files/figure-markdown_github/segregate_serous-14.png" width="672" />
+<img src="figure_3_files/figure-markdown_github/segregate_serous-11.png" width="672" /><img src="figure_3_files/figure-markdown_github/segregate_serous-12.png" width="672" />
 
 # Marker genes
 
-First we can look at marker genes by AUROC. The motivation here is to determine for each cluster which specific genes are good classifiers for cluster membership. These stats were calculated using the Pegasus `de_analysis` function.
+First we can look at marker genes by AUROC. The motivation here is to determine for each cluster which specific genes are good classifiers for cluster membership. These stats were calculated using the Pegasus `de_analysis` function. The DE analysis function is commented out due to the time it takes to run. Results are already in the data object. We are showing the function for transparency.
 
 ``` python
 # pg.de_analysis(epithelial_harmonized, cluster = "new_clusters", auc = True,
@@ -197,7 +204,7 @@ top_gene_df = top_gene_df.rename(columns = {clust : "cluster_{clust}".format(clu
 top_gene_df = top_gene_df.replace(np.nan, "")
 ```
 
-<img src="figure_3_files/figure-markdown_github/DE_analysis-17.png" width="672" />
+<img src="figure_3_files/figure-markdown_github/DE_analysis-15.png" width="672" />
 
 ``` r
 library(knitr)
@@ -1044,7 +1051,7 @@ kable(reticulate::py$top_gene_df, caption = "genes with AUC > 0.75")
 </tbody>
 </table>
 
-We can see from the above AUROC genes, that we don't have a strong enough signal from some clusters to get a good sense of their phenotype solely on that. So we can also find markers using an OVA pseudobulk approach. To do this, we first created a psedudobulk matrix by summing the UMI counts across cells for each unique cluster/sample combination, creating a matrix of n genes x (n samples \* n clusters). Using this matrix with DESeq2, For each cluster, we used an input model gene ~ in\_clust where in\_clust is a factor with two levels indicating if the sample was in or not in the cluster being tested. Genes with an FDR &lt; 5% were considered marker genes.
+We can see from the above AUROC genes, that we don't have a strong enough signal from some clusters to get a good sense of their phenotype solely on that. So we can also find markers using an OVA pseudobulk approach. To do this, we first created a psedudobulk matrix by summing the UMI counts across cells for each unique cluster/sample combination, creating a matrix of n genes x (n samples \* n clusters). Using this matrix with DESeq2, For each cluster, we used an input model gene ~ in\_clust where in\_clust is a factor with two levels indicating if the sample was in or not in the cluster being tested. Genes with an FDR &lt; 5% were considered marker genes. The DESEq2 code is commented out due to the length of time it takes to run. The function is an rpy2 implementation of DESeq2. This can be found here : <https://github.com/nealpsmith/neals_python_functions/blob/master/neals_python_functions/analysis/deseq2.py>
 
 ``` python
 # import neals_python_functions as nealsucks
@@ -2299,6 +2306,50 @@ for key in epithelial_gene_dict.keys() :
 
 <img src="figure_3_files/figure-markdown_github/dotplots-1.png" width="889" /><img src="figure_3_files/figure-markdown_github/dotplots-2.png" width="570" /><img src="figure_3_files/figure-markdown_github/dotplots-3.png" width="960" />
 
+Given all of this information, we were able to annotate our clusters. Below are the annotations we used
+
+``` python
+annotation_dict = { "1" : "Early ciliated",
+                    "2" : "Ciliated",
+                    "3" : "Mucous-ciliated",
+                    "4" : "Hillock",
+                    "5" : "Deuterosomal",
+                    "6" : "Cycling basal",
+                    "7" : "Basal",
+                    "8" : "Suprabasal",
+                    "9" : "quiesBasal",
+                    "10" : "Ionocyte",
+                    "11" : "Goblet",
+                    "12" : "quiesGoblet",
+                    "13" : "Club",
+                    "14" : "Serous"
+                    }
+
+color_dict = { "Early ciliated" : "#ffbb78",
+               "Ciliated" : "#ff7f0e",
+               "Mucous-ciliated" : "#b5bd61",
+               "Hillock" : "#17becf",
+               "Deuterosomal" : "#98df8a",
+               "Cycling basal" : "#aec7e8",
+               "Basal" : "#aa40fc",
+               "Suprabasal" : "#279e68",
+               "quiesBasal" : "#8c564b",
+               "Ionocyte" : "#ff9896",
+               "Goblet" : "#d62728",
+               "quiesGoblet" : "#1f77b4",
+               "Club" : "#e377c2",
+               "Serous" : "#c5b0d5"
+               }
+
+epithelial_harmonized.obs["annotation"] = [annotation_dict[c] for c in epithelial_harmonized.obs["new_clusters"]]
+figure = sc.pl.umap(epithelial_harmonized, color = ["annotation"],
+                    palette = color_dict, return_fig = True, show = False, legend_loc = "on data")
+figure.set_size_inches(8, 8)
+figure
+```
+
+<img src="figure_3_files/figure-markdown_github/annotations-7.png" width="768" />
+
 # Differential expression analysis
 
 To perform differential expression analyses we used `DESeq2` on a pseudobulk count matrix where we summed the UMI counts across cells for each unique cluster/sample combination, creating a matrix of n genes x (n samples \* n clusters). First, we were curious about the differences between the baseline and allergen timepoints. We used a simple model of `gene ~ sample` where sample was a factor with 2 levels (Pre, Ag) indicating which condition the sample was from. When we compare the number of DEGs from Pre:Ag between AA and AC, we see that AA has significantly more. This suggests epithelial cells change much more when exposed to allergen in AA than AC.
@@ -2367,12 +2418,12 @@ ggplot(plot_df, aes(x = new_clusters, y = value, group = variable, fill = variab
   geom_bar(stat = "identity") + coord_flip() +
   scale_fill_manual(values = c("#FF8000", "#40007F")) +
   scale_y_continuous(labels = abs) +
-  ggtitle(glue("Number of DE genes at Ag")) +
+  ggtitle(glue("Number of DE genes Pre vs. Ag")) +
   ylab("# of DE genes") + xlab("") +
   theme_bw(base_size = 20)
 ```
 
-![](figure_3_files/figure-markdown_github/deseq2_res-7.png)
+![](figure_3_files/figure-markdown_github/deseq2_res-9.png)
 
 We can also look at this in UMAP space.
 
@@ -2382,7 +2433,7 @@ cell_info["umap_1"] = epithelial_harmonized.obsm["X_umap"][:,0]
 cell_info["umap_2"] = epithelial_harmonized.obsm["X_umap"][:,1]
 ```
 
-<img src="figure_3_files/figure-markdown_github/cell_info-1.png" width="960" />
+<img src="figure_3_files/figure-markdown_github/cell_info-1.png" width="768" />
 
 ``` r
 library(ggpubr)
@@ -2424,7 +2475,7 @@ all_plots
 Next, we wanted to look for genes that were significant with an interaction between the phenotype (AA vs. AC) and sample (Pre vs. Ag) terms. To do this, we followed the suggestion in the `DESeq2` vignette and combined the factor levels of phenotype and sample to create a new factor called "interaction". We then used a model of `gene ~ interaction`. A likelihood ratio test was performed to find statistically significant genes.
 
 ``` r
-#Limit to just Ag samples
+#Limit to just Ag/pre samples
 meta_data <- meta_data[meta_data$sample != "Dil",]
 count_mtx <- count_mtx[,rownames(meta_data)]
 
@@ -2574,7 +2625,7 @@ for (gset in names(gene_lists)) {
 
 # Hillock cells
 
-Another notable discovery in our dataset was the presence of what looked to Hillock cells. These cells were first reported by Montoro et al. Nature, 2018 in mice, but they are yet to be reported in the airway of humans. We noticed cluster 9 had the major markers of these cells (KRT13, KRT4, etc.). To test the hypothesis that these cells do in fact represent what was found by Montoro et al., we too the top genes they reported as markers for these cells and created a gene set score. As we expect, we see that the distibutuion of the score is much higher in cluster 9 cells vs. all other clusters.
+Another notable discovery in our dataset was the presence of what looked to Hillock cells. These cells were first reported by Montoro et al. Nature, 2018 in mice, but they are yet to be reported in the airway of humans. We noticed cluster 4 had the major markers of these cells (KRT13, KRT4, etc.). To test the hypothesis that these cells do in fact represent what was found by Montoro et al., we too the top genes they reported as markers for these cells and created a gene set score. As we expect, we see that the distibutuion of the score is much higher in cluster 4 cells vs. all other clusters.
 
 ``` python
 hillock_genes = ["Upk3bl", "Krt4", "S100g", "Tppp3", "Ecm1", "Lgals3", "Ly6g6c", "Anxa1", "Calml3", "Crip1", "Plac8",
@@ -2601,3 +2652,342 @@ plt.show()
 ```
 
 <img src="figure_3_files/figure-markdown_github/hillock-1.png" width="576" /><img src="figure_3_files/figure-markdown_github/hillock-2.png" width="576" />
+
+Given Hillock cells represent a novel cell type in humans, we wanted to perform general differential expression comparing these cells in AA vs. AC. Below, we show that there are a few differentially expressed genes between these cells in our disease groups.
+
+``` r
+library(ggrepel)
+
+count_mtx <- as.matrix(read.csv("/home/nealpsmith/projects/medoff/data/pseudobulk_epithelial_harmonized_counts_for_github.csv",
+                                row.names = 1))
+
+meta_data <- read.csv("/home/nealpsmith/projects/medoff/data/pseudobulk_epithelial_harmonized_meta_for_github.csv", row.names = 1)
+meta_data$phenotype[meta_data$phenotype == "ANA"] <- "AC"
+meta_data$phenotype <- factor(meta_data$phenotype, levels = c("AC", "AA"))
+
+
+meta_temp <-meta_data[meta_data$cluster == 4,] # Hillock cells originally labelled as cluster 9
+count_temp <- count_mtx[,rownames(meta_temp)]
+
+n_samp <- rowSums(count_temp != 0)
+count_temp <- count_temp[n_samp > round(nrow(meta_temp) / 2),]
+
+
+stopifnot(rownames(meta_temp) == colnames(count_temp))
+
+dds <- DESeqDataSetFromMatrix(countData = count_temp,
+                              colData = meta_temp,
+                              design = ~phenotype)
+```
+
+    ## converting counts to integer mode
+
+``` r
+dds <- DESeq(dds)
+```
+
+    ## estimating size factors
+
+    ## estimating dispersions
+
+    ## gene-wise dispersion estimates
+
+    ## mean-dispersion relationship
+
+    ## final dispersion estimates
+
+    ## fitting model and testing
+
+    ## -- replacing outliers and refitting for 29 genes
+    ## -- DESeq argument 'minReplicatesForReplace' = 7 
+    ## -- original counts are preserved in counts(dds)
+
+    ## estimating dispersions
+
+    ## fitting model and testing
+
+``` r
+res <- results(dds)
+plot_data <- as.data.frame(res)
+plot_data <- plot_data[!is.na(plot_data$padj),]
+plot_data$gene <- rownames(plot_data)
+
+ggplot(plot_data, aes(x = log2FoldChange, y = -log10(pvalue))) +
+  geom_point(data = plot_data[plot_data$padj > 0.1,], color = "grey") +
+  geom_point(data = plot_data[plot_data$log2FoldChange > 0 & plot_data$padj < 0.1,], color = "#FF8000") +
+  geom_point(data = plot_data[plot_data$log2FoldChange < 0 & plot_data$padj < 0.1,], color = "#40007F") +
+  geom_text_repel(data = plot_data[plot_data$padj < 0.1,], aes(label = gene)) +
+  theme_classic()
+```
+
+![](figure_3_files/figure-markdown_github/hillock_aa_vs_ac-5.png)
+
+# Differential Abundance analysis
+
+We can look for abundance differences between groups and conditions. First, we used stacked bars to assess the amount of the total cells each epithelial cluster represented in every sample.
+
+``` python
+
+cell_info = epithelial_harmonized.obs
+all_cell_info = pg.read_input("/home/nealpsmith/projects/medoff/data/anndata_for_publication/all_data_harmonized.h5ad")
+all_cell_info = all_cell_info.obs
+```
+
+<img src="figure_3_files/figure-markdown_github/dataframe-1.png" width="576" />
+
+``` r
+cols <- c("Early ciliated" = "#ffbb78",
+"Ciliated" = "#ff7f0e",
+"Mucous-ciliated" = "#b5bd61",
+"Hillock" = "#17becf",
+"Deuterosomal" = "#98df8a",
+"Cycling basal" = "#aec7e8",
+"Basal" = "#aa40fc",
+"Suprabasal" = "#279e68",
+"quiesBasal" = "#8c564b",
+"Ionocyte" = "#ff9896",
+"Goblet" = "#d62728",
+"quiesGoblet" = "#1f77b4",
+"Club" = "#e377c2",
+"Serous" = "#c5b0d5"
+)
+
+all_cell_info <- reticulate::py$all_cell_info
+epi_info <- reticulate::py$cell_info
+
+
+cells_per_donor <- all_cell_info %>%
+  dplyr::select(id, sample, phenotype) %>%
+  group_by(id, sample, phenotype) %>%
+  summarise(n_total = n())
+```
+
+    ## `summarise()` has grouped output by 'id', 'sample'. You can override using the `.groups` argument.
+
+``` r
+epi_counts <- epi_info %>%
+  dplyr::select(id, sample, annotation, phenotype) %>%
+  group_by(id, sample, annotation, phenotype) %>%
+  summarise(n_cells = n())
+```
+
+    ## `summarise()` has grouped output by 'id', 'sample', 'annotation'. You can override using the `.groups` argument.
+
+``` r
+plot_df <- epi_counts %>%
+  dplyr::left_join(cells_per_donor, by = c("id", "sample", "phenotype")) %>%
+  mutate(perc_cells = n_cells / n_total * 100)
+
+plot_df <- plot_df[plot_df$sample != "Dil",]
+plot_df$sample <- as.character(plot_df$sample)
+plot_df$sample[plot_df$sample == "Pre"] <- "Bln"
+plot_df$sample <- factor(plot_df$sample, levels = c("Bln", "Ag"))
+plot_df$annotation <- factor(plot_df$annotation)
+
+ggplot(plot_df, aes(x = sample, fill = annotation, y = perc_cells)) + geom_bar(stat = "identity") +
+  facet_grid(~id) +
+  ylab("percent") +
+  scale_fill_manual(values = cols) +
+  scale_y_continuous(limits = c(0, 60)) +
+  theme_classic(base_size = 20)
+```
+
+    ## Warning: Removed 11 rows containing missing values (geom_bar).
+
+![](figure_3_files/figure-markdown_github/stacked_bars-3.png)
+
+Below, we are looking at the distributions of percents and total number of AECs for our disease groups. The percents represent the percent of each AEC subcluster as a function of all AECs.
+
+``` r
+plot_df <- epi_counts %>%
+  group_by(id, sample) %>%
+  mutate(total_cells = sum(n_cells)) %>%
+  mutate(percent = n_cells / total_cells * 100)
+plot_df$phenotype <- as.character(plot_df$phenotype)
+plot_df$phenotype[plot_df$phenotype == "ANA"] <- "AC"
+plot_df$phenotype <- factor(plot_df$phenotype, levels = c("AC", "AA"))
+
+order <- plot_df %>%
+  group_by(annotation) %>%
+  summarise(n_total = sum(n_cells)) %>%
+  arrange(desc(n_total)) %>%
+  .$annotation
+
+plot_df$annotation <- factor(plot_df$annotation, levels = order)
+
+plot_df$sample <- as.character(plot_df$sample)
+plot_df <- plot_df[plot_df$sample != "Dil",]
+plot_df$sample[plot_df$sample == "Pre"] <- "Bln"
+plot_df$sample <- factor(plot_df$sample, levels = c("Bln", "Ag"))
+
+ggplot(plot_df, aes(x = annotation, y = percent, fill = phenotype)) +
+        geom_boxplot() +
+        scale_fill_manual(values = c("#40007F", "#FF8000")) +
+        scale_y_log10() +
+        annotation_logticks(side = "l") +
+        facet_wrap(~sample) +
+        ylab("Percent of AECs") +
+        xlab("cluster") +
+        theme_classic(base_size = 20) +
+        theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+```
+
+![](figure_3_files/figure-markdown_github/perc_plots-1.png)
+
+``` r
+ggplot(plot_df, aes(x = annotation, y = n_cells, fill = phenotype)) +
+        geom_boxplot() +
+        scale_fill_manual(values = c("#40007F", "#FF8000")) +
+        scale_y_log10() +
+        annotation_logticks(side = "l") +
+        facet_wrap(~sample) +
+        ylab("Number of AECs") +
+        xlab("cluster") +
+        theme_classic(base_size = 20) +
+        theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+```
+
+![](figure_3_files/figure-markdown_github/n_cells-1.png)
+
+To determine which clusters were associated with particular disease group at a given condition, we used a mixed-effects association logistic regression model similar to that described by Fonseka et al. We fit a logistic regression model for each cell cluster. Each cluster was modelled independently as follows : `cluster ~ 1 + condition:group + condition + group + (1 | id)`
+
+The least-squares means of the factors in the model were calculated and all pairwise contrasts between the means of the groups at each condition (e.g. AA vs AC within baseline, AA vs AC within allergen, etc.) were compared. The OR with confidence interval for each sample/condition combination were plotted.
+
+``` r
+library(lme4)
+```
+
+    ## Loading required package: Matrix
+
+    ## 
+    ## Attaching package: 'Matrix'
+
+    ## The following object is masked from 'package:S4Vectors':
+    ## 
+    ##     expand
+
+    ## The following objects are masked from 'package:tidyr':
+    ## 
+    ##     expand, pack, unpack
+
+``` r
+library(emmeans)
+
+# A function to perform the mixed-effects logistic regression modelling, returning, p-values, odds-ratio and confidence intervals
+get_abund_info <- function(dataset, cluster, contrast, random_effects = NULL, fixed_effects = NULL){
+  # Generate design matrix from cluster assignments
+  cluster <- as.character(cluster)
+  designmat <- model.matrix(~ cluster + 0, data.frame(cluster = cluster))
+  dataset <- cbind(designmat, dataset)
+  # Create output list to hold results
+  res <- vector(mode = "list", length = length(unique(cluster)))
+  names(res) <- attributes(designmat)$dimnames[[2]]
+
+  # Create model formulas
+  model_rhs <- paste0(c(paste0(fixed_effects, collapse = " + "),
+                        paste0("(1|", random_effects, ")", collapse = " + ")),
+                      collapse = " + ")
+
+  # Initialize list to store model objects for each cluster
+  cluster_models <- vector(mode = "list",
+                           length = length(attributes(designmat)$dimnames[[2]]))
+  names(cluster_models) <- attributes(designmat)$dimnames[[2]]
+
+  for (i in seq_along(attributes(designmat)$dimnames[[2]])) {
+    test_cluster <- attributes(designmat)$dimnames[[2]][i]
+
+    # Make it a non-intercept model to get odds for each variable
+    full_fm <- as.formula(paste0(c(paste0(test_cluster, " ~ 1 + ", contrast, " + "),
+                                   model_rhs), collapse = ""))
+
+    full_model <- lme4::glmer(formula = full_fm, data = dataset,
+                              family = binomial, nAGQ = 1, verbose = 0,
+                              control = glmerControl(optimizer = "bobyqa"))
+
+    pvals <-lsmeans(full_model, pairwise ~ "phenotype | sample")
+
+    p_val_df <- summary(pvals$contrasts)
+    p_val_df$cluster <- test_cluster
+
+    ci <- eff_size(pvals, sigma = sigma(full_model), edf = df.residual(full_model))
+    ci_df <- summary(ci) %>%
+    dplyr::select(sample, asymp.LCL, asymp.UCL)
+    ci_df$cluster <- test_cluster
+
+    info_df <- left_join(p_val_df, ci_df, by = c("sample", "cluster"))
+
+    cluster_models[[i]] <- info_df
+
+  }
+  return(cluster_models)
+}
+
+clust_df <- reticulate::py$cell_info
+
+abund_info <- get_abund_info(clust_df, cluster = clust_df$new_clusters,
+                            contrast = "sample:phenotype",
+                            random_effects = "id",
+                            fixed_effects = c("sample", "phenotype"))
+```
+
+    ## Since 'object' is a list, we are using the contrasts already present.
+
+    ## Since 'object' is a list, we are using the contrasts already present.
+    ## Since 'object' is a list, we are using the contrasts already present.
+    ## Since 'object' is a list, we are using the contrasts already present.
+    ## Since 'object' is a list, we are using the contrasts already present.
+    ## Since 'object' is a list, we are using the contrasts already present.
+    ## Since 'object' is a list, we are using the contrasts already present.
+    ## Since 'object' is a list, we are using the contrasts already present.
+    ## Since 'object' is a list, we are using the contrasts already present.
+    ## Since 'object' is a list, we are using the contrasts already present.
+    ## Since 'object' is a list, we are using the contrasts already present.
+    ## Since 'object' is a list, we are using the contrasts already present.
+    ## Since 'object' is a list, we are using the contrasts already present.
+    ## Since 'object' is a list, we are using the contrasts already present.
+
+``` r
+plot_df <- do.call(rbind, abund_info)
+plot_df$direction <- ifelse(plot_df$estimate > 0, "AA", "AC")
+
+plot_df$cluster <- as.numeric(gsub("cluster", "", plot_df$cluster))
+plot_df$cluster <- factor(plot_df$cluster)
+# Add the annotations
+annotations <- clust_df %>%
+  dplyr::select(new_clusters, annotation) %>%
+  distinct()
+plot_df <- plot_df %>%
+  left_join(annotations, by = c("cluster" = "new_clusters"))
+
+plot_df$sig <- ifelse(plot_df$p.value < 0.05, plot_df$direction, "non_sig")
+plot_df$sig <- factor(plot_df$sig)
+plot_df$sample <- as.character(plot_df$sample)
+plot_df$sample[plot_df$sample == "Pre"] <- "Bln"
+plot_df$sample <- factor(plot_df$sample, levels = c("Bln", "Dil", "Ag"))
+plot_df$annotation <- as.character(plot_df$annotation)
+plot_df <- plot_df[plot_df$annotation != "Serous",]
+plot_df$annotation <- factor(plot_df$annotation, levels = rev(c("Early ciliated", "Ciliated", "Mucous-ciliated",
+                                                            "Hillock", "Deuterosomal", "Cycling basal", "Basal",
+                                                            "Suprabasal", "quiesBasal", "Ionocyte", "Goblet",
+                                                                "quiesGoblet", "Club")))
+
+ggplot(plot_df[plot_df$sample != "Dil",], aes(x = estimate, y = annotation, color = sig)) +
+  geom_point(size = 3) +
+  geom_errorbarh(mapping = aes(xmin = asymp.LCL, xmax = asymp.UCL, y = annotation, color = sig), height = 0) +
+  geom_vline(xintercept = 0, size = 0.2) +
+  scale_color_manual(
+      name = "P < 0.05",
+      values = c("#FF8000", "#40007F", "grey60"),
+      breaks = c("AA", "AC")
+    ) +
+    scale_x_continuous(
+      breaks = log(c(0.125, 0.5, 1, 2, 4)),
+      labels = function(x) exp(x)
+    ) +
+    # scale_y_discrete(labels = levels(plot_df$cluster)) +
+  xlab("Odds Ratio") +
+  facet_wrap(~sample) +
+  theme_classic(base_size = 20)
+```
+
+![](figure_3_files/figure-markdown_github/disease_association-1.png)
