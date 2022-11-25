@@ -944,38 +944,57 @@ all_cell_info = all_cell_info.obs
 
 ```
 
-```{r stacked_bars}
 
-# all_cell_info <- reticulate::py$all_cell_info
-# t_cell_info <- reticulate::py$cell_info
-#
-#
-# cells_per_donor <- all_cell_info %>%
-#   dplyr::select(id, sample, phenotype) %>%
-#   group_by(id, sample, phenotype) %>%
-#   summarise(n_total = n())
-#
-# t_cell_counts <- t_cell_info %>%
-#   dplyr::select(id, sample, annotation, phenotype) %>%
-#   group_by(id, sample, annotation, phenotype) %>%
-#   summarise(n_cells = n())
-#
-# plot_df <- t_cell_counts %>%
-#   dplyr::left_join(cells_per_donor, by = c("id", "sample", "phenotype")) %>%
-#   mutate(perc_cells = n_cells / n_total * 100)
-#
-# plot_df <- plot_df[plot_df$sample != "Dil",]
-# plot_df$sample <- as.character(plot_df$sample)
-# plot_df$sample[plot_df$sample == "Pre"] <- "Bln"
-# plot_df$sample <- factor(plot_df$sample, levels = c("Bln", "Ag"))
-# plot_df$annotation <- factor(plot_df$annotation)
-#
-# ggplot(plot_df, aes(x = sample, fill = annotation, y = perc_cells)) + geom_bar(stat = "identity") +
-#   facet_grid(~id) +
-#   ylab("percent") +
-#   scale_fill_manual(values = cols) +
-#   scale_y_continuous(limits = c(0, 60)) +
-#   theme_classic(base_size = 20)
+```{r stacked_bars, fig.width = 12, fig.height = 4}
+
+cols <- c('CD8 T (GZMK)'= '#e377c2',
+ 'quiesCD8 T '= '#2ca02c',
+ 'CD8 T (CLIC3)'= '#1f77b4',
+ 'Tgd (TRDC)'= '#9467bd',
+ 'CD8 T (EGR2)'= '#bcbd22',
+ 'CD4 Treg (FOXP3)'= '#8c564b',
+ 'CD4 Th2 (GATA3)'= '#7f7f7f',
+ 'CD4 ThIFNR (ISG15)'= '#17becf',
+ 'CD4 T (CD40LG)'= '#ff7f0e',
+ 'CD4 Th17 (RORA)'= '#d62728')
+
+all_cell_info <- reticulate::py$all_cell_info
+t_cell_info <- reticulate::py$cell_info
+
+
+cells_per_donor <- all_cell_info %>%
+  dplyr::select(id, sample, phenotype) %>%
+  group_by(id, sample, phenotype) %>%
+  summarise(n_total = n())
+
+# Need to fix old nomenclature
+cells_per_donor$sample <- as.character(cells_per_donor$sample)
+cells_per_donor$sample[cells_per_donor$sample == "Pre"] <- "Bln"
+cells_per_donor$phenotype <- as.character(cells_per_donor$phenotype)
+cells_per_donor$phenotype[cells_per_donor$phenotype == "ANA"] <- "AC"
+
+t_cell_counts <- t_cell_info %>%
+  dplyr::select(id, sample, annotation, phenotype) %>%
+  group_by(id, sample, annotation, phenotype) %>%
+  summarise(n_cells = n())
+
+
+plot_df <- t_cell_counts %>%
+  dplyr::left_join(cells_per_donor, by = c("id", "sample", "phenotype")) %>%
+  mutate(perc_cells = n_cells / n_total * 100)
+
+plot_df <- plot_df[plot_df$sample != "Dil",]
+plot_df$sample <- as.character(plot_df$sample)
+plot_df$sample[plot_df$sample == "Pre"] <- "Bln"
+plot_df$sample <- factor(plot_df$sample, levels = c("Bln", "Ag"))
+plot_df$annotation <- factor(plot_df$annotation)
+
+ggplot(plot_df, aes(x = sample, fill = annotation, y = perc_cells)) + geom_bar(stat = "identity") +
+  facet_grid(~id) +
+  ylab("percent") +
+  scale_fill_manual(values = cols) +
+  scale_y_continuous(limits = c(0, 60)) +
+  theme_classic(base_size = 20)
 
 ```
 
