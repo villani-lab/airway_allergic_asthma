@@ -6,6 +6,7 @@ output: html_document
 ```{r message=FALSE}
 library(reticulate)
 use_python("/home/nealpsmith/.conda/envs/sc_analysis/bin/python")
+
 ```
 
 **For figure 4, we wanted to focus in on the T cells.  We subsetted our main data object to just the T cell clusters.
@@ -521,6 +522,36 @@ library(circlize)
 
 ```
 
+
+
+
+```{python annotations}
+
+annotation_dict = {"1" : "CD8 T (GZMK)",
+                  "2" : "quiesCD8 T ",
+                  "3" : "CD8 T (CLIC3)",
+                  "4" : "Tgd (TRDC)",
+                  "5" : "CD8 T (EGR2)",
+                  "6" : "CD4 Treg (FOXP3)",
+                  "7" : "CD4 Th2 (GATA3)",
+                  "8" : "CD4 ThIFNR (ISG15)",
+                  "9" : "CD4 T (CD40LG)",
+                  "10" : "CD4 Th17 (RORA)"}
+
+color_dict = dict(zip(annotation_dict.values(), t_cell_harmonized.uns["leiden_labels_colors"]))
+print(color_dict)
+
+t_cell_harmonized.obs["annotation"] = [annotation_dict[c] for c in t_cell_harmonized.obs["leiden_labels"]]
+figure = sc.pl.umap(t_cell_harmonized, color = ["annotation"],
+                    palette = color_dict, return_fig = True, show = False, legend_loc = "on data")
+figure.set_size_inches(8, 8)
+figure
+
+```
+
+
+
+
 #GSEA analysis
 
 To validate the annotations of our Th subsets, we performed GSEA, first using published helper T cell gene sets from
@@ -528,134 +559,133 @@ Seumois et al. We can see that the clusters we defined as Th2, Th7 and ThIFNR do
 on these gene sets
 
 ```{python get_pseudobulk_stats}
-t_cell_harmonized
 
-de_res = t_cell_harmonized.varm["de_res"]
-de_res = pd.DataFrame(de_res, index = t_cell_harmonized.var_names)
-
-pseudo_stats = pd.DataFrame()
-for cl in set(t_cell_harmonized.obs["leiden_labels"]) :
-    df_dict = {"log_fc": t_cell_harmonized.varm["de_res"][
-                   "pseudobulk_log_fold_change:{clust}".format(clust=cl)],
-               "pval": t_cell_harmonized.varm["de_res"]["pseudobulk_p_val:{clust}".format(clust=cl)],
-               "percent_cells": t_cell_harmonized.varm["de_res"]["percentage:{clust}".format(clust=cl)]}
-    df = pd.DataFrame(df_dict, index=t_cell_harmonized.var.index)
-    df["cluster"] = f"cluster_{cl}"
-    df["feature"] = df.index.values
-    pseudo_stats = pseudo_stats.append(df)
+# de_res = t_cell_harmonized.varm["de_res"]
+# de_res = pd.DataFrame(de_res, index = t_cell_harmonized.var_names)
+#
+# pseudo_stats = pd.DataFrame()
+# for cl in set(t_cell_harmonized.obs["leiden_labels"]) :
+#     df_dict = {"log_fc": t_cell_harmonized.varm["de_res"][
+#                    "pseudobulk_log_fold_change:{clust}".format(clust=cl)],
+#                "pval": t_cell_harmonized.varm["de_res"]["pseudobulk_p_val:{clust}".format(clust=cl)],
+#                "percent_cells": t_cell_harmonized.varm["de_res"]["percentage:{clust}".format(clust=cl)]}
+#     df = pd.DataFrame(df_dict, index=t_cell_harmonized.var.index)
+#     df["cluster"] = f"cluster_{cl}"
+#     df["feature"] = df.index.values
+#     pseudo_stats = pseudo_stats.append(df)
 
 ```
 
-```{r th_gsea}
-library(glue)
-library(fgsea)
-library(ggpubr)
-
-pseudo_stats <- reticulate::py$pseudo_stats
-
-# Adjust the old cluster names to be new annotations
-annotations <- c("1" = "CD8 T (GZMK)",
-                  "2" = "quiesCD8 T ",
-                  "3" = "CD8 T (CLIC3)",
-                  "4" = "Tgd (TRDC)",
-                  "5" = "CD8 T (EGR2)",
-                  "6" = "CD4 Treg (FOXP3)",
-                  "7" = "CD4 Th2 (GATA3)",
-                  "8" = "CD4 ThIFNR (ISG15)",
-                  "9" = "CD4 T (CD40LG)",
-                  "10" = "CD4 Th17 (RORA)")
-
-pseudo_stats$annotation <- sapply(pseudo_stats$cluster, function(x){
-  cl <- sub("cluster_", "", x)
-  return(annotations[cl])
-})
-
-# Load in the Seumois datasets
-
-seumois_df <- read.csv("/home/nealpsmith/projects/medoff/data/gene_sets/seumois_gene_sets.csv")
-
-seumois_gene_sets <- lapply(colnames(seumois_df), function(n){
-  genes <- seumois_df[[n]]
-  genes <- genes[genes != ""]
-  return(genes)
-})
-names(seumois_gene_sets) <- colnames(seumois_df)
-
-
-## Want to make the three we want for the paper ##
-pair_df = data.frame("cluster" = c("7", "10", "8"),
-                     "gene_set" = c("Th2", "Th17", "IFN"))
-
-
-
-plot_list <- list()
-for (i in 1:nrow(pair_df)){
-  cluster <- pair_df$cluster[i]
-  gs <- pair_df$gene_set[i]
-
-  pseudo_clust <- pseudo_stats[pseudo_stats$cluster == glue("cluster_{cluster}"),]
-
-  ranks <- pseudo_clust %>%
-    dplyr::filter(percent_cells > 5) %>%
-    dplyr::arrange(desc(log_fc)) %>%
-    dplyr::select(feature, log_fc) %>%
-    deframe(.)
-
-  fgsea_res <- fgsea(pathways = seumois_gene_sets, stats = ranks, nperm = 10000)
-
-  annot <- annotations[[cluster]]
-
-  nes <- round(fgsea_res$NES[fgsea_res$pathway == gs], 3)
-  pval <- round(fgsea_res$pval[fgsea_res$pathway == gs], 3)
-  n_genes <- fgsea_res$size[fgsea_res$pathway == gs]
-
-  rnk <- rank(-ranks)
-  ord <- order(rnk)
-
-  statsAdj <- ranks[ord]
-  statsAdj <- sign(statsAdj) * (abs(statsAdj) ^ 1)
-  statsAdj <- statsAdj / max(abs(statsAdj))
-
-  pathway <- unname(as.vector(na.omit(match(seumois_gene_sets[[gs]], names(statsAdj)))))
-  pathway <- sort(pathway)
-
-  gseaRes <- calcGseaStat(statsAdj, selectedStats = pathway,
-                            returnAllExtremes = TRUE)
-
-  bottoms <- gseaRes$bottoms
-  tops <- gseaRes$tops
-
-  n <- length(statsAdj)
-  xs <- as.vector(rbind(pathway - 1, pathway))
-  ys <- as.vector(rbind(bottoms, tops))
-  toPlot <- data.frame(x=c(0, xs, n + 1), y=c(0, ys, 0))
-
-  diff <- (max(tops) - min(bottoms)) / 8
-
-  x=y=NULL
-
-  p <- ggplot(toPlot, aes(x = x, y = y)) +
-    # geom_point(color="blue", size=0.1) +
-    geom_line(color="blue") +
-    geom_hline(yintercept=0, colour="black") +
-    geom_segment(data=data.frame(x=pathway),
-                     mapping=aes(x=x, y=-0.15,
-                                 xend=x, yend=-0.25),
-                     size=0.4) +
-    scale_y_continuous(expand = c(0.05,0.05)) +
-    xlab("Rank") + ylab("Enrichment score") +
-    geom_text(aes(label = "")) +
-    annotate("text", label = glue("NES : {nes}"), x = length(ranks) - 1000, y  =0.9) +
-    annotate("text", label = glue("p-value : {pval}"), x = length(ranks) - 1000, y = 0.8) +
-    annotate("text", label = glue("# genes : {n_genes}"), x = length(ranks) - 1000, y = 0.7) +
-    ggtitle(glue("{gs} signature : {annot}")) +
-    theme_classic(base_size = 12)
-
-  plot_list <- c(plot_list, list(p))
-}
-
-plots <- ggarrange(plotlist = plot_list, ncol = 2, nrow = 2)
-plots
+```{r th_gsea, warning = FALSE, message = FALSE, fig.height = 8, fig.width = 10}
+# library(glue)
+# library(fgsea)
+# library(ggpubr)
+#
+# pseudo_stats <- reticulate::py$pseudo_stats
+#
+# # Adjust the old cluster names to be new annotations
+# annotations <- c("1" = "CD8 T (GZMK)",
+#                   "2" = "quiesCD8 T ",
+#                   "3" = "CD8 T (CLIC3)",
+#                   "4" = "Tgd (TRDC)",
+#                   "5" = "CD8 T (EGR2)",
+#                   "6" = "CD4 Treg (FOXP3)",
+#                   "7" = "CD4 Th2 (GATA3)",
+#                   "8" = "CD4 ThIFNR (ISG15)",
+#                   "9" = "CD4 T (CD40LG)",
+#                   "10" = "CD4 Th17 (RORA)")
+#
+# pseudo_stats$annotation <- sapply(pseudo_stats$cluster, function(x){
+#   cl <- sub("cluster_", "", x)
+#   return(annotations[cl])
+# })
+#
+# # Load in the Seumois datasets
+#
+# seumois_df <- read.csv("/home/nealpsmith/projects/medoff/data/gene_sets/seumois_gene_sets.csv")
+#
+# seumois_gene_sets <- lapply(colnames(seumois_df), function(n){
+#   genes <- seumois_df[[n]]
+#   genes <- genes[genes != ""]
+#   return(genes)
+# })
+# names(seumois_gene_sets) <- colnames(seumois_df)
+#
+#
+# ## Want to make the three we want for the paper ##
+# pair_df = data.frame("cluster" = c("7", "10", "8"),
+#                      "gene_set" = c("Th2", "Th17", "IFN"))
+#
+#
+#
+# plot_list <- list()
+# for (i in 1:nrow(pair_df)){
+#   cluster <- pair_df$cluster[i]
+#   gs <- pair_df$gene_set[i]
+#
+#   pseudo_clust <- pseudo_stats[pseudo_stats$cluster == glue("cluster_{cluster}"),]
+#
+#   ranks <- pseudo_clust %>%
+#     dplyr::filter(percent_cells > 5) %>%
+#     dplyr::arrange(desc(log_fc)) %>%
+#     dplyr::select(feature, log_fc) %>%
+#     deframe(.)
+#
+#   fgsea_res <- fgsea(pathways = seumois_gene_sets, stats = ranks, nperm = 10000)
+#
+#   annot <- annotations[[cluster]]
+#
+#   nes <- round(fgsea_res$NES[fgsea_res$pathway == gs], 3)
+#   pval <- round(fgsea_res$pval[fgsea_res$pathway == gs], 3)
+#   n_genes <- fgsea_res$size[fgsea_res$pathway == gs]
+#
+#   rnk <- rank(-ranks)
+#   ord <- order(rnk)
+#
+#   statsAdj <- ranks[ord]
+#   statsAdj <- sign(statsAdj) * (abs(statsAdj) ^ 1)
+#   statsAdj <- statsAdj / max(abs(statsAdj))
+#
+#   pathway <- unname(as.vector(na.omit(match(seumois_gene_sets[[gs]], names(statsAdj)))))
+#   pathway <- sort(pathway)
+#
+#   gseaRes <- calcGseaStat(statsAdj, selectedStats = pathway,
+#                             returnAllExtremes = TRUE)
+#
+#   bottoms <- gseaRes$bottoms
+#   tops <- gseaRes$tops
+#
+#   n <- length(statsAdj)
+#   xs <- as.vector(rbind(pathway - 1, pathway))
+#   ys <- as.vector(rbind(bottoms, tops))
+#   toPlot <- data.frame(x=c(0, xs, n + 1), y=c(0, ys, 0))
+#
+#   diff <- (max(tops) - min(bottoms)) / 8
+#
+#   x=y=NULL
+#
+#   p <- ggplot(toPlot, aes(x = x, y = y)) +
+#     # geom_point(color="blue", size=0.1) +
+#     geom_line(color="blue") +
+#     geom_hline(yintercept=0, colour="black") +
+#     geom_segment(data=data.frame(x=pathway),
+#                      mapping=aes(x=x, y=-0.15,
+#                                  xend=x, yend=-0.25),
+#                      size=0.4) +
+#     scale_y_continuous(expand = c(0.05,0.05)) +
+#     xlab("Rank") + ylab("Enrichment score") +
+#     geom_text(aes(label = "")) +
+#     annotate("text", label = glue("NES : {nes}"), x = length(ranks) - 1000, y  =0.9) +
+#     annotate("text", label = glue("p-value : {pval}"), x = length(ranks) - 1000, y = 0.8) +
+#     annotate("text", label = glue("# genes : {n_genes}"), x = length(ranks) - 1000, y = 0.7) +
+#     ggtitle(glue("{gs} signature : {annot}")) +
+#     theme_classic(base_size = 12)
+#
+#   plot_list <- c(plot_list, list(p))
+# }
+#
+# plots <- ggarrange(plotlist = plot_list, ncol = 2, nrow = 2)
+# plots
 ```
 
 To further validate these annotations, we performed GSEA using gene sets we devised ourselves from published data from
@@ -664,150 +694,290 @@ phenotype-skewing cytokines (IL4, IFNG).  We derived our gene sets by performing
 all other Th subsets, Th17 vs. all other subsets etc.  We see the same patterns as we did with the published gene sets,
 giving us confidence in our annotations.
 
-```{r cano_gsea}
-library(DESeq2)
-
-meta_data <- read.csv("/home/nealpsmith/projects/medoff/cano_bulk/data/NCOMMS-19-7936188_bulk_RNAseq_metadata.txt", sep = "\t",
-                      row.names = 2)
-meta_data$row.names <- NULL
-count_data <- read.csv("/home/nealpsmith/projects/medoff/cano_bulk/data/NCOMMS-19-7936188_bulk_RNAseq_raw_counts.txt", sep = "\t")
-
+```{r cano_gsea, warning = FALSE, message = FALSE, fig.height = 8, fig.width = 10}
+# library(DESeq2)
 #
-# genes <- rownames(count_data)
-# mart <- useDataset("hsapiens_gene_ensembl", useMart("ENSEMBL_MART_ENSEMBL"))
-# annot<-getBM(c("ensembl_gene_id", "hgnc_symbol"), mart=mart)
+# meta_data <- read.csv("/home/nealpsmith/projects/medoff/cano_bulk/data/NCOMMS-19-7936188_bulk_RNAseq_metadata.txt", sep = "\t",
+#                       row.names = 2)
+# meta_data$row.names <- NULL
+# count_data <- read.csv("/home/nealpsmith/projects/medoff/cano_bulk/data/NCOMMS-19-7936188_bulk_RNAseq_raw_counts.txt", sep = "\t")
+#
+# #
+# # genes <- rownames(count_data)
+# # mart <- useDataset("hsapiens_gene_ensembl", useMart("ENSEMBL_MART_ENSEMBL"))
+# # annot<-getBM(c("ensembl_gene_id", "hgnc_symbol"), mart=mart)
+#
+# # write.csv(annot, "/home/nealpsmith/data/useful/human_ensembl_to_hgnc.csv")
+# annot <- read.csv("/home/nealpsmith/data/useful/human_ensembl_to_hgnc.csv")
+# # lets get the genes for the counts
+# count_temp <- count_data %>%
+# rownames_to_column(var = "ensembl_gene_id") %>%
+# dplyr::left_join(annot, by = "ensembl_gene_id") %>%
+# dplyr::filter(hgnc_symbol != "") %>%
+# distinct(hgnc_symbol, .keep_all = TRUE) %>%
+# column_to_rownames(var = "hgnc_symbol") %>%
+# dplyr::select(-ensembl_gene_id)
+#
+# # Lets filter
+# meta_temp <- meta_data %>%
+# dplyr::filter(cell_type == "CD4_Naive", cytokine_condition %in% c("Th1", "Th2", "Th17", "IFNB"))
+#
+# conditions <-c("Th1", "Th2", "Th17", "IFNB")
+#
+# sig_gene_list <- list()
+# for (test_condition in conditions){
+# meta_temp$in_subset <- ifelse(meta_temp$cytokine_condition == test_condition, "yes", "no")
+#
+# count_temp <- count_temp[,rownames(meta_temp)]
+# stopifnot(rownames(meta_temp) == colnames(count_temp))
+#
+# dds <- DESeqDataSetFromMatrix(countData = count_temp,
+#                               colData = meta_temp,
+#                               design = ~in_subset)
+# # Filtering
+# keep <- rowSums(counts(dds) >= 10) >= round(nrow(meta_temp) * 0.66)
+# dds <- dds[keep,]
+# dds <- DESeq(dds)
+# res <- results(dds)
+# plot_data <- as.data.frame(res)
+#
+# sig_genes <- plot_data %>%
+#   arrange(plot_data$pvalue)%>%
+#   dplyr::filter(log2FoldChange > 1, padj < 0.1) %>%
+#   rownames()
+# sig_gene_list[[test_condition]] <- sig_genes
+#
+# }
+# max_ln<-max(sapply(sig_gene_list, length))
+#
+# sig_df <- data.frame("Th1" = c(sig_gene_list$Th1, rep(NA, max_ln - length(sig_gene_list$Th1))),
+#                    "Th2" = c(sig_gene_list$Th2, rep(NA, max_ln - length(sig_gene_list$Th2))),
+#                    "Th17" = c(sig_gene_list$Th17, rep(NA, max_ln - length(sig_gene_list$Th17))),
+#                    "IFNB" = c(c(sig_gene_list$IFNB, rep(NA, max_ln - length(sig_gene_list$IFNB)))))
+#
+#
+# pair_df = data.frame("cluster" = c("7", "10", "8"),
+#                      "gene_set" = c("Th2", "Th17", "IFNB"))
+#
+# plot_list <- list()
+# for (i in 1:nrow(pair_df)){
+#   cluster <- pair_df$cluster[i]
+#   gs <- pair_df$gene_set[i]
+#
+#   pseudo_clust <- pseudo_stats[pseudo_stats$cluster == glue("cluster_{cluster}"),]
+#
+#   ranks <- pseudo_clust %>%
+#     dplyr::filter(percent_cells > 5) %>%
+#     dplyr::arrange(desc(log_fc)) %>%
+#     dplyr::select(feature, log_fc) %>%
+#     deframe(.)
+#
+#   fgsea_res <- fgsea(pathways = sig_gene_list, stats = ranks, nperm = 10000)
+#
+#   annot <- annotations[[cluster]]
+#
+#   nes <- round(fgsea_res$NES[fgsea_res$pathway == gs], 3)
+#   pval <- round(fgsea_res$pval[fgsea_res$pathway == gs], 3)
+#   n_genes <- fgsea_res$size[fgsea_res$pathway == gs]
+#
+#   rnk <- rank(-ranks)
+#   ord <- order(rnk)
+#
+#   statsAdj <- ranks[ord]
+#   statsAdj <- sign(statsAdj) * (abs(statsAdj) ^ 1)
+#   statsAdj <- statsAdj / max(abs(statsAdj))
+#
+#   pathway <- unname(as.vector(na.omit(match(sig_gene_list[[gs]], names(statsAdj)))))
+#   pathway <- sort(pathway)
+#
+#   gseaRes <- calcGseaStat(statsAdj, selectedStats = pathway,
+#                             returnAllExtremes = TRUE)
+#
+#   bottoms <- gseaRes$bottoms
+#   tops <- gseaRes$tops
+#
+#   n <- length(statsAdj)
+#   xs <- as.vector(rbind(pathway - 1, pathway))
+#   ys <- as.vector(rbind(bottoms, tops))
+#   toPlot <- data.frame(x=c(0, xs, n + 1), y=c(0, ys, 0))
+#
+#   diff <- (max(tops) - min(bottoms)) / 8
+#
+#   x=y=NULL
+#
+#   p <- ggplot(toPlot, aes(x = x, y = y)) +
+#     # geom_point(color="blue", size=0.1) +
+#     geom_line(color="blue") +
+#     geom_hline(yintercept=0, colour="black") +
+#     geom_segment(data=data.frame(x=pathway),
+#                      mapping=aes(x=x, y=-0.15,
+#                                  xend=x, yend=-0.25),
+#                      size=0.4) +
+#     scale_y_continuous(expand = c(0.05,0.05)) +
+#     xlab("Rank") + ylab("Enrichment score") +
+#     geom_text(aes(label = "")) +
+#     annotate("text", label = glue("NES : {nes}"), x = length(ranks) - 1000, y  =0.9) +
+#     annotate("text", label = glue("p-value : {pval}"), x = length(ranks) - 1000, y = 0.8) +
+#     annotate("text", label = glue("# genes : {n_genes}"), x = length(ranks) - 1000, y = 0.7) +
+#     ggtitle(glue("{gs} signature : {annot}")) +
+#     theme_classic(base_size = 12)
+#
+#   # p <- plotEnrichment(sig_gene_list[[gs]], ranks) +
+#   #   ggtitle(glue("{gs} signature : {annot}")) +
+#   #   geom_text(aes(label = "")) +
+#   #   annotate("text", label = glue("NES : {nes}"), x = length(ranks) - 1000, y  =1) +
+#   #   annotate("text", label = glue("p-value : {pval}"), x = length(ranks) - 1000, y = 0.93) +
+#   #   theme_classic()
+#   plot_list <- c(plot_list, list(p))
+# }
+#
+# plots <- ggarrange(plotlist = plot_list, ncol = 2, nrow = 2)
+# plots
 
-# write.csv(annot, "/home/nealpsmith/data/useful/human_ensembl_to_hgnc.csv")
-annot <- read.csv("/home/nealpsmith/data/useful/human_ensembl_to_hgnc.csv")
-# lets get the genes for the counts
-count_temp <- count_data %>%
-rownames_to_column(var = "ensembl_gene_id") %>%
-dplyr::left_join(annot, by = "ensembl_gene_id") %>%
-dplyr::filter(hgnc_symbol != "") %>%
-distinct(hgnc_symbol, .keep_all = TRUE) %>%
-column_to_rownames(var = "hgnc_symbol") %>%
-dplyr::select(-ensembl_gene_id)
+```
 
-# Lets filter
-meta_temp <- meta_data %>%
-dplyr::filter(cell_type == "CD4_Naive", cytokine_condition %in% c("Th1", "Th2", "Th17", "IFNB"))
+We also used to GSEA to better understand the phenotype of our CD8 T cell clusters. Here we used Trm and Tem gene sets
+from Kumar et al. We see that CD8 T (GZMK) has a strong Tem phenotype, while CD8 T (CLIC3) and CD8 T (EGR2) have a
+Trm phenotype.
 
-conditions <-c("Th1", "Th2", "Th17", "IFNB")
+```{r gsea_trm_tem, fig.width = 12, fig.height = 8}
 
-sig_gene_list <- list()
-for (test_condition in conditions){
-meta_temp$in_subset <- ifelse(meta_temp$cytokine_condition == test_condition, "yes", "no")
-
-count_temp <- count_temp[,rownames(meta_temp)]
-stopifnot(rownames(meta_temp) == colnames(count_temp))
-
-dds <- DESeqDataSetFromMatrix(countData = count_temp,
-                              colData = meta_temp,
-                              design = ~in_subset)
-# Filtering
-keep <- rowSums(counts(dds) >= 10) >= round(nrow(meta_temp) * 0.66)
-dds <- dds[keep,]
-dds <- DESeq(dds)
-res <- results(dds)
-plot_data <- as.data.frame(res)
-
-sig_genes <- plot_data %>%
-  arrange(plot_data$pvalue)%>%
-  dplyr::filter(log2FoldChange > 1, padj < 0.1) %>%
-  rownames()
-sig_gene_list[[test_condition]] <- sig_genes
-
-}
-max_ln<-max(sapply(sig_gene_list, length))
-
-sig_df <- data.frame("Th1" = c(sig_gene_list$Th1, rep(NA, max_ln - length(sig_gene_list$Th1))),
-                   "Th2" = c(sig_gene_list$Th2, rep(NA, max_ln - length(sig_gene_list$Th2))),
-                   "Th17" = c(sig_gene_list$Th17, rep(NA, max_ln - length(sig_gene_list$Th17))),
-                   "IFNB" = c(c(sig_gene_list$IFNB, rep(NA, max_ln - length(sig_gene_list$IFNB)))))
-
-
-pair_df = data.frame("cluster" = c("7", "10", "8"),
-                     "gene_set" = c("Th2", "Th17", "IFNB"))
-
-plot_list <- list()
-for (i in 1:nrow(pair_df)){
-  cluster <- pair_df$cluster[i]
-  gs <- pair_df$gene_set[i]
-
-  pseudo_clust <- pseudo_stats[pseudo_stats$cluster == glue("cluster_{cluster}"),]
-
-  ranks <- pseudo_clust %>%
-    dplyr::filter(percent_cells > 5) %>%
-    dplyr::arrange(desc(log_fc)) %>%
-    dplyr::select(feature, log_fc) %>%
-    deframe(.)
-
-  fgsea_res <- fgsea(pathways = sig_gene_list, stats = ranks, nperm = 10000)
-
-  annot <- annotations[[cluster]]
-
-  nes <- round(fgsea_res$NES[fgsea_res$pathway == gs], 3)
-  pval <- round(fgsea_res$pval[fgsea_res$pathway == gs], 3)
-  n_genes <- fgsea_res$size[fgsea_res$pathway == gs]
-
-  rnk <- rank(-ranks)
-  ord <- order(rnk)
-
-  statsAdj <- ranks[ord]
-  statsAdj <- sign(statsAdj) * (abs(statsAdj) ^ 1)
-  statsAdj <- statsAdj / max(abs(statsAdj))
-
-  pathway <- unname(as.vector(na.omit(match(sig_gene_list[[gs]], names(statsAdj)))))
-  pathway <- sort(pathway)
-
-  gseaRes <- calcGseaStat(statsAdj, selectedStats = pathway,
-                            returnAllExtremes = TRUE)
-
-  bottoms <- gseaRes$bottoms
-  tops <- gseaRes$tops
-
-  n <- length(statsAdj)
-  xs <- as.vector(rbind(pathway - 1, pathway))
-  ys <- as.vector(rbind(bottoms, tops))
-  toPlot <- data.frame(x=c(0, xs, n + 1), y=c(0, ys, 0))
-
-  diff <- (max(tops) - min(bottoms)) / 8
-
-  x=y=NULL
-
-  p <- ggplot(toPlot, aes(x = x, y = y)) +
-    # geom_point(color="blue", size=0.1) +
-    geom_line(color="blue") +
-    geom_hline(yintercept=0, colour="black") +
-    geom_segment(data=data.frame(x=pathway),
-                     mapping=aes(x=x, y=-0.15,
-                                 xend=x, yend=-0.25),
-                     size=0.4) +
-    scale_y_continuous(expand = c(0.05,0.05)) +
-    xlab("Rank") + ylab("Enrichment score") +
-    geom_text(aes(label = "")) +
-    annotate("text", label = glue("NES : {nes}"), x = length(ranks) - 1000, y  =0.9) +
-    annotate("text", label = glue("p-value : {pval}"), x = length(ranks) - 1000, y = 0.8) +
-    annotate("text", label = glue("# genes : {n_genes}"), x = length(ranks) - 1000, y = 0.7) +
-    ggtitle(glue("{gs} signature : {annot}")) +
-    theme_classic(base_size = 12)
-
-  # p <- plotEnrichment(sig_gene_list[[gs]], ranks) +
-  #   ggtitle(glue("{gs} signature : {annot}")) +
-  #   geom_text(aes(label = "")) +
-  #   annotate("text", label = glue("NES : {nes}"), x = length(ranks) - 1000, y  =1) +
-  #   annotate("text", label = glue("p-value : {pval}"), x = length(ranks) - 1000, y = 0.93) +
-  #   theme_classic()
-  plot_list <- c(plot_list, list(p))
-}
-
-plots <- ggarrange(plotlist = plot_list, ncol = 2, nrow = 2)
-plots
+# kumar_de_data <- read.csv("/home/nealpsmith/projects/medoff/data/kumar_lung_cd69_pos_vs_neg.csv")
+#
+# kumar_trm <- kumar_de_data %>%
+#   dplyr::filter(logFC > 0, FDR < 0.05) %>%
+#   .$Gene
+#
+# kumar_tem <- kumar_de_data %>%
+#   dplyr::filter(logFC < 0, FDR < 0.05) %>%
+#   .$Gene
+#
+# gsea_list <- list("kumar_trm" = kumar_trm, "kumar_tem" = kumar_tem)
+#
+# clusts_to_test <- c("1", "3", "5")
+#
+# plot_list <- list()
+# for (sig in names(gsea_list)){
+#   gene_set <- gsea_list[[sig]]
+#
+#
+#   gs_list <- list(gene_set)
+#   names(gs_list) <- sig
+#
+#   for (cluster in clusts_to_test){
+#     pseudo_clust <- pseudo_stats[pseudo_stats$cluster == glue("cluster_{cluster}"),]
+#
+#     ranks <- pseudo_clust %>%
+#       dplyr::filter(percent_cells > 5) %>%
+#       dplyr::arrange(desc(log_fc)) %>%
+#       dplyr::select(feature, log_fc) %>%
+#       deframe(.)
+#
+#     fgsea_res <- fgsea(pathways = gs_list, stats = ranks, nperm = 10000)
+#
+#     annot <- annotations[[cluster]]
+#
+#     nes <- round(fgsea_res$NES[fgsea_res$pathway == sig], 3)
+#     pval <- round(fgsea_res$pval[fgsea_res$pathway == sig], 3)
+#     n_genes <- fgsea_res$size[fgsea_res$pathway == sig]
+#
+#     rnk <- rank(-ranks)
+#     ord <- order(rnk)
+#
+#     statsAdj <- ranks[ord]
+#     statsAdj <- sign(statsAdj) * (abs(statsAdj) ^ 1)
+#     statsAdj <- statsAdj / max(abs(statsAdj))
+#
+#     pathway <- unname(as.vector(na.omit(match(gs_list[[sig]], names(statsAdj)))))
+#     pathway <- sort(pathway)
+#
+#     gseaRes <- calcGseaStat(statsAdj, selectedStats = pathway,
+#                               returnAllExtremes = TRUE)
+#
+#     bottoms <- gseaRes$bottoms
+#     tops <- gseaRes$tops
+#
+#     n <- length(statsAdj)
+#     xs <- as.vector(rbind(pathway - 1, pathway))
+#     ys <- as.vector(rbind(bottoms, tops))
+#     toPlot <- data.frame(x=c(0, xs, n + 1), y=c(0, ys, 0))
+#
+#     diff <- (max(tops) - min(bottoms)) / 8
+#
+#     x=y=NULL
+#
+#     p <- ggplot(toPlot, aes(x = x, y = y)) +
+#       # geom_point(color="blue", size=0.1) +
+#       geom_line(color="blue") +
+#       geom_hline(yintercept=0, colour="black") +
+#       geom_segment(data=data.frame(x=pathway),
+#                        mapping=aes(x=x, y=-0.15,
+#                                    xend=x, yend=-0.25),
+#                        size=0.4) +
+#       scale_y_continuous(expand = c(0.05,0.05)) +
+#       xlab("Rank") + ylab("Enrichment score") +
+#       geom_text(aes(label = "")) +
+#       annotate("text", label = glue("NES : {nes}"), x = length(ranks) - 2000, y  =0.9) +
+#       annotate("text", label = glue("p-value : {pval}"), x = length(ranks) - 2000, y = 0.8) +
+#       annotate("text", label = glue("# genes : {n_genes}"), x = length(ranks) - 2000, y = 0.7) +
+#       ggtitle(glue("{sig} signature : {annot}")) +
+#       theme_classic(base_size = 12)
+#
+#     # ggsave(glue("/home/nealpsmith/projects/medoff/figures/gsea/{sig}/{annot}_{sig}.pdf"), p)
+#     plot_list <- c(plot_list, list(p))
+#
+#   }
+# }
+# plots <- ggarrange(plotlist = plot_list, ncol = 3, nrow = 2)
+# plots
 
 ```
 
 
 #Differential abundance analysis
+
+```{python get_cell_info}
+
+cell_info = t_cell_harmonized.obs
+all_cell_info = pg.read_input("/home/nealpsmith/projects/medoff/data/anndata_for_publication/all_data_harmonized.h5ad")
+all_cell_info = all_cell_info.obs
+
+```
+
+```{r stacked_bars}
+
+# all_cell_info <- reticulate::py$all_cell_info
+# t_cell_info <- reticulate::py$cell_info
+#
+#
+# cells_per_donor <- all_cell_info %>%
+#   dplyr::select(id, sample, phenotype) %>%
+#   group_by(id, sample, phenotype) %>%
+#   summarise(n_total = n())
+#
+# t_cell_counts <- t_cell_info %>%
+#   dplyr::select(id, sample, annotation, phenotype) %>%
+#   group_by(id, sample, annotation, phenotype) %>%
+#   summarise(n_cells = n())
+#
+# plot_df <- t_cell_counts %>%
+#   dplyr::left_join(cells_per_donor, by = c("id", "sample", "phenotype")) %>%
+#   mutate(perc_cells = n_cells / n_total * 100)
+#
+# plot_df <- plot_df[plot_df$sample != "Dil",]
+# plot_df$sample <- as.character(plot_df$sample)
+# plot_df$sample[plot_df$sample == "Pre"] <- "Bln"
+# plot_df$sample <- factor(plot_df$sample, levels = c("Bln", "Ag"))
+# plot_df$annotation <- factor(plot_df$annotation)
+#
+# ggplot(plot_df, aes(x = sample, fill = annotation, y = perc_cells)) + geom_bar(stat = "identity") +
+#   facet_grid(~id) +
+#   ylab("percent") +
+#   scale_fill_manual(values = cols) +
+#   scale_y_continuous(limits = c(0, 60)) +
+#   theme_classic(base_size = 20)
+
+```
 
 To determine which clusters were associated with particular group at a given condition, we used a mixed-effects
 association logistic regression model similar to that described by Fonseka et al.  We fit a logistic regression model
@@ -1004,7 +1174,6 @@ ones that came out were interesting.  For example, in the Th2 cells, we see IL2R
 All significant genes we found were up-regulated in the AA.
 
 ```{r de_res, warning = FALSE, message = FALSE}
-# library(DESeq2)
 # library(glue)
 #
 # count_mtx <- as.matrix(read.csv("/home/nealpsmith/projects/medoff/data/pseudobulk_t_cell_harmonized_counts.csv", row.names = 1))
