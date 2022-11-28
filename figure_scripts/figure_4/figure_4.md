@@ -6,7 +6,7 @@ library(reticulate)
 use_python("/home/nealpsmith/.conda/envs/sc_analysis/bin/python")
 ```
 
-**For figure 4, we wanted to focus in on the T cells. We subsetted our main data object to just the T cell clusters. From there we had a few goals : Find heterogeneity among the T cells, determine which T cell clusters are enriched in AA and ANA and look for DEGs among the T cells.**
+**For figure 4, we wanted to focus in on the T cells. We subsetted our main data object to just the T cell clusters. From there we had a few goals : Find heterogeneity among the T cells, determine which T cell clusters are enriched in AA and AC and look for DEGs among the T cells.**
 
 First, we isolated just the T cells from our original data object. NK cells were segregated and removed. Next, we wanted to determine the optimal number of clusters for our T cells.
 
@@ -79,13 +79,11 @@ def _collect_samples(W, resolution, n_cells, resamp_size, true_class, random_sta
     return adjusted_rand_score(true_class, new_class)
 ```
 
-<img src="figure_4_files/figure-markdown_github/rand_func-1.png" width="672" />
-
 ``` python
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-t_cell_harmonized = pg.read_input("/home/nealpsmith/projects/medoff/data/t_cell_harmonized.h5ad")
+t_cell_harmonized = pg.read_input("/home/nealpsmith/projects/medoff/data/anndata_for_publication/t_cell_harmonized.h5ad")
 
 # rand_indx_dict = rand_index_plot(W = t_cell_harmonized.uns["W_pca_harmony"],
 #                                       resolutions  = [0.3, 0.5, 0.7, 0.9, 1.1, 1.3, 1.5, 1.7, 1.9],
@@ -95,12 +93,17 @@ t_cell_harmonized = pg.read_input("/home/nealpsmith/projects/medoff/data/t_cell_
 # plot_df = plot_df.reset_index()
 # plot_df = plot_df.melt(id_vars="index")
 # plot_df.to_csv(os.path.join(file_path(), "data", "ari_plots", "t_cell_harmonized_ARI.csv"))
+```
+
+    ## 2022-11-28 14:00:32,119 - pegasus - INFO - Time spent on 'read_input' = 5.59s.
+
+``` python
 plot_df = pd.read_csv("/home/nealpsmith/projects/medoff/data/ari_plots/t_cell_harmonized_ARI.csv")
 fig, ax = plt.subplots(1)
 _ = sns.boxplot(x="index", y="value", data=plot_df, ax = ax)
 for box in ax.artists:
     box.set_facecolor("grey")
-ax.artists[5].set_facecolor("red") # The one we chose!
+# ax.artists[5].set_facecolor("red") # The one we chose!
 ax.spines['right'].set_visible(False)
 ax.spines['top'].set_visible(False)
 ax.tick_params(axis='both', which='major', labelsize=15)
@@ -111,7 +114,7 @@ fig.tight_layout()
 fig
 ```
 
-<img src="figure_4_files/figure-markdown_github/rand_plot-3.png" width="672" />
+<img src="figure_4_files/figure-markdown_github/rand_plot-1.png" width="672" />
 
 Based on this rand index approach, we can see that a leiden resolution of 1.3 is the highest resolution where the soultion remains quite stable. Given this, we went forward with clustering at this resolution. We can immediately appreciate this seperation of CD4 and CD8 clusters
 
@@ -129,7 +132,7 @@ figure.set_size_inches(12, 4)
 figure
 ```
 
-<img src="figure_4_files/figure-markdown_github/clustering-5.png" width="1152" />
+<img src="figure_4_files/figure-markdown_github/clustering-3.png" width="1152" />
 
 # Marker genes
 
@@ -152,7 +155,7 @@ top_gene_df = top_gene_df.rename(columns = {clust : "cluster_{clust}".format(clu
 top_gene_df = top_gene_df.replace(np.nan, "")
 ```
 
-<img src="figure_4_files/figure-markdown_github/DE_analysis-7.png" width="1152" />
+<img src="figure_4_files/figure-markdown_github/DE_analysis-5.png" width="1152" />
 
 ``` r
 library(knitr)
@@ -189,104 +192,102 @@ kable(reticulate::py$top_gene_df, caption = "genes with AUC > 0.75")
 </thead>
 <tbody>
 <tr class="odd">
-<td align="left">CD8A</td>
-<td align="left">RPS8</td>
-<td align="left">MALAT1</td>
-<td align="left">IL7R</td>
-<td align="left">GNLY</td>
-<td align="left">TNFRSF4</td>
 <td align="left">GZMK</td>
-<td align="left">TNFRSF18</td>
+<td align="left">MALAT1</td>
+<td align="left">CD8A</td>
+<td align="left">GNLY</td>
 <td align="left">SRGN</td>
+<td align="left">TNFRSF4</td>
+<td align="left">TNFRSF18</td>
 <td align="left">ISG15</td>
+<td align="left">RPS8</td>
+<td align="left">IL7R</td>
 </tr>
 <tr class="even">
 <td align="left"></td>
-<td align="left">RPL32</td>
 <td align="left"></td>
-<td align="left">KLRB1</td>
+<td align="left"></td>
 <td align="left">HOPX</td>
-<td align="left">TMSB10</td>
-<td align="left"></td>
-<td align="left">TNFRSF4</td>
 <td align="left">CD69</td>
+<td align="left">TMSB10</td>
+<td align="left">TNFRSF4</td>
 <td align="left">IFI6</td>
+<td align="left">RPL32</td>
+<td align="left">KLRB1</td>
 </tr>
 <tr class="odd">
 <td align="left"></td>
-<td align="left">RPL34</td>
 <td align="left"></td>
-<td align="left">RPLP1</td>
+<td align="left"></td>
 <td align="left">KLRD1</td>
-<td align="left">LTB</td>
-<td align="left"></td>
-<td align="left">CHDH</td>
 <td align="left">CCL4</td>
+<td align="left">LTB</td>
+<td align="left">CHDH</td>
 <td align="left">IFI44L</td>
+<td align="left">RPL34</td>
+<td align="left">RPLP1</td>
 </tr>
 <tr class="even">
 <td align="left"></td>
-<td align="left">RPS23</td>
 <td align="left"></td>
 <td align="left"></td>
 <td align="left">KLRC1</td>
-<td align="left">IL2RA</td>
-<td align="left"></td>
-<td align="left">IL17RB</td>
 <td align="left">CCL4L2</td>
+<td align="left">IL2RA</td>
+<td align="left">IL17RB</td>
 <td align="left">RSAD2</td>
+<td align="left">RPS23</td>
+<td align="left"></td>
 </tr>
 <tr class="odd">
 <td align="left"></td>
-<td align="left">EEF1A1</td>
 <td align="left"></td>
 <td align="left"></td>
 <td align="left">CD63</td>
 <td align="left"></td>
 <td align="left"></td>
 <td align="left">IL13</td>
-<td align="left"></td>
 <td align="left">EIF2AK2</td>
+<td align="left">EEF1A1</td>
+<td align="left"></td>
 </tr>
 <tr class="even">
 <td align="left"></td>
-<td align="left">RPS12</td>
 <td align="left"></td>
 <td align="left"></td>
 <td align="left">CCL5</td>
 <td align="left"></td>
 <td align="left"></td>
 <td align="left">HSP90AB1</td>
-<td align="left"></td>
 <td align="left">HERC5</td>
+<td align="left">RPS12</td>
+<td align="left"></td>
 </tr>
 <tr class="odd">
 <td align="left"></td>
-<td align="left">RPL39</td>
 <td align="left"></td>
 <td align="left"></td>
 <td align="left"></td>
 <td align="left"></td>
 <td align="left"></td>
 <td align="left">GATA3</td>
-<td align="left"></td>
 <td align="left">LY6E</td>
+<td align="left">RPL39</td>
+<td align="left"></td>
 </tr>
 <tr class="even">
 <td align="left"></td>
-<td align="left">RPL10</td>
 <td align="left"></td>
 <td align="left"></td>
 <td align="left"></td>
 <td align="left"></td>
 <td align="left"></td>
 <td align="left">RPLP0</td>
-<td align="left"></td>
 <td align="left">IFIT1</td>
+<td align="left">RPL10</td>
+<td align="left"></td>
 </tr>
 <tr class="odd">
-<td align="left"></td>
-<td align="left">RPL30</td>
 <td align="left"></td>
 <td align="left"></td>
 <td align="left"></td>
@@ -295,10 +296,10 @@ kable(reticulate::py$top_gene_df, caption = "genes with AUC > 0.75")
 <td align="left"></td>
 <td align="left"></td>
 <td align="left">ISG20</td>
+<td align="left">RPL30</td>
+<td align="left"></td>
 </tr>
 <tr class="even">
-<td align="left"></td>
-<td align="left">RPS6</td>
 <td align="left"></td>
 <td align="left"></td>
 <td align="left"></td>
@@ -307,10 +308,10 @@ kable(reticulate::py$top_gene_df, caption = "genes with AUC > 0.75")
 <td align="left"></td>
 <td align="left"></td>
 <td align="left">XAF1</td>
+<td align="left">RPS6</td>
+<td align="left"></td>
 </tr>
 <tr class="odd">
-<td align="left"></td>
-<td align="left">TPT1</td>
 <td align="left"></td>
 <td align="left"></td>
 <td align="left"></td>
@@ -319,17 +320,19 @@ kable(reticulate::py$top_gene_df, caption = "genes with AUC > 0.75")
 <td align="left"></td>
 <td align="left"></td>
 <td align="left">MX1</td>
+<td align="left">TPT1</td>
+<td align="left"></td>
 </tr>
 <tr class="even">
 <td align="left"></td>
+<td align="left"></td>
+<td align="left"></td>
+<td align="left"></td>
+<td align="left"></td>
+<td align="left"></td>
+<td align="left"></td>
+<td align="left"></td>
 <td align="left">RPL13</td>
-<td align="left"></td>
-<td align="left"></td>
-<td align="left"></td>
-<td align="left"></td>
-<td align="left"></td>
-<td align="left"></td>
-<td align="left"></td>
 <td align="left"></td>
 </tr>
 </tbody>
@@ -439,8 +442,8 @@ kable(reticulate::py$top_gene_df, caption = "genes with AUC> 0.75 or pseudo q < 
 <caption>genes with AUC&gt; 0.75 or pseudo q &lt; 0.05</caption>
 <colgroup>
 <col width="9%" />
-<col width="9%" />
 <col width="11%" />
+<col width="9%" />
 <col width="9%" />
 <col width="9%" />
 <col width="11%" />
@@ -465,604 +468,604 @@ kable(reticulate::py$top_gene_df, caption = "genes with AUC> 0.75 or pseudo q < 
 </thead>
 <tbody>
 <tr class="odd">
-<td align="left">CD8A</td>
-<td align="left">RPS8</td>
-<td align="left">MALAT1</td>
-<td align="left">IL7R</td>
-<td align="left">GNLY</td>
-<td align="left">TNFRSF4</td>
 <td align="left">GZMK</td>
-<td align="left">TNFRSF18</td>
-<td align="left">SRGN</td>
-<td align="left">ISG15</td>
-</tr>
-<tr class="even">
-<td align="left">CLIC3</td>
-<td align="left">RPL32</td>
-<td align="left">GPR155</td>
-<td align="left">KLRB1</td>
-<td align="left">HOPX</td>
-<td align="left">TMSB10</td>
-<td align="left">EOMES</td>
-<td align="left">TNFRSF4</td>
-<td align="left">CD69</td>
-<td align="left">IFI6</td>
-</tr>
-<tr class="odd">
-<td align="left">THEMIS</td>
-<td align="left">RPL34</td>
-<td align="left">ITGA1</td>
-<td align="left">RPLP1</td>
-<td align="left">KLRD1</td>
-<td align="left">LTB</td>
-<td align="left">HLA-DQA1</td>
-<td align="left">CHDH</td>
-<td align="left">CCL4</td>
-<td align="left">IFI44L</td>
-</tr>
-<tr class="even">
-<td align="left">FKBP11</td>
-<td align="left">RPS23</td>
-<td align="left">SMURF2</td>
-<td align="left">SLC4A10</td>
-<td align="left">KLRC1</td>
-<td align="left">IL2RA</td>
-<td align="left">HLA-DRA</td>
-<td align="left">IL17RB</td>
-<td align="left">CCL4L2</td>
-<td align="left">RSAD2</td>
-</tr>
-<tr class="odd">
-<td align="left">RFLNB</td>
-<td align="left">EEF1A1</td>
-<td align="left">CD226</td>
-<td align="left">IL4I1</td>
-<td align="left">CD63</td>
-<td align="left">FOXP3</td>
-<td align="left">DTHD1</td>
-<td align="left">IL13</td>
-<td align="left">EGR2</td>
-<td align="left">EIF2AK2</td>
-</tr>
-<tr class="even">
-<td align="left">RGL4</td>
-<td align="left">RPS12</td>
-<td align="left">THEMIS</td>
-<td align="left">TNFSF13B</td>
-<td align="left">CCL5</td>
-<td align="left">CTLA4</td>
-<td align="left">KLRG1</td>
-<td align="left">HSP90AB1</td>
-<td align="left">EGR3</td>
-<td align="left">HERC5</td>
-</tr>
-<tr class="odd">
-<td align="left">LGALS1</td>
-<td align="left">RPL39</td>
-<td align="left">THUMPD3-AS1</td>
-<td align="left">LST1</td>
-<td align="left">KIR2DL4</td>
-<td align="left">RTKN2</td>
-<td align="left">HLA-DQB1</td>
-<td align="left">GATA3</td>
-<td align="left">CCL3</td>
-<td align="left">LY6E</td>
-</tr>
-<tr class="even">
-<td align="left">CD2</td>
-<td align="left">RPL10</td>
-<td align="left">AC245297.3</td>
-<td align="left">NCR3</td>
-<td align="left">TRDC</td>
-<td align="left">TBC1D4</td>
-<td align="left">GZMH</td>
-<td align="left">RPLP0</td>
-<td align="left">CCL3L1</td>
-<td align="left">IFIT1</td>
-</tr>
-<tr class="odd">
-<td align="left">RNF167</td>
-<td align="left">RPL30</td>
-<td align="left">ITGAE</td>
-<td align="left">PRR5</td>
-<td align="left">CLNK</td>
-<td align="left">TNFRSF18</td>
-<td align="left">HLA-DRB1</td>
-<td align="left">IL5</td>
-<td align="left">NR4A1</td>
-<td align="left">ISG20</td>
-</tr>
-<tr class="even">
-<td align="left">CD3G</td>
-<td align="left">RPS6</td>
-<td align="left">GRAP2</td>
-<td align="left">CCR6</td>
-<td align="left">CXXC5</td>
-<td align="left">IL1R1</td>
-<td align="left">HLA-DRB5</td>
-<td align="left">HPGDS</td>
-<td align="left">XCL1</td>
-<td align="left">XAF1</td>
-</tr>
-<tr class="odd">
-<td align="left">COMMD8</td>
-<td align="left">TPT1</td>
+<td align="left">MALAT1</td>
 <td align="left">CD8A</td>
-<td align="left">TMIGD2</td>
-<td align="left">PIK3AP1</td>
-<td align="left">LINC01943</td>
-<td align="left">SAMD3</td>
-<td align="left">IL4</td>
-<td align="left">XCL2</td>
-<td align="left">MX1</td>
-</tr>
-<tr class="even">
-<td align="left">UBTF</td>
-<td align="left">RPL13</td>
-<td align="left">SUN2</td>
-<td align="left">NRIP1</td>
-<td align="left">LINC02446</td>
-<td align="left">LTA</td>
-<td align="left">HLA-DPB1</td>
-<td align="left">PTGDR2</td>
-<td align="left">NFKBID</td>
-<td align="left">IFIT3</td>
-</tr>
-<tr class="odd">
-<td align="left">S100A4</td>
-<td align="left">MAL</td>
-<td align="left">AC004687.1</td>
-<td align="left">CEBPD</td>
-<td align="left">KLRC2</td>
-<td align="left">HPGD</td>
-<td align="left">CMC1</td>
-<td align="left">KRT1</td>
-<td align="left">EGR1</td>
-<td align="left">CMPK2</td>
-</tr>
-<tr class="even">
-<td align="left">S100A10</td>
-<td align="left">CD40LG</td>
-<td align="left">TTC14</td>
-<td align="left">CTSH</td>
-<td align="left">IKZF2</td>
-<td align="left">HAPLN3</td>
-<td align="left">CST7</td>
-<td align="left">CACNA1D</td>
-<td align="left">DUSP2</td>
-<td align="left">OAS1</td>
-</tr>
-<tr class="odd">
-<td align="left">HMOX2</td>
-<td align="left">CCR7</td>
-<td align="left">SPN</td>
-<td align="left">DPP4</td>
-<td align="left">CAPN12</td>
-<td align="left">ZC3H12D</td>
-<td align="left">SH2D1A</td>
-<td align="left">GATA3-AS1</td>
-<td align="left">TNF</td>
-<td align="left">OAS3</td>
-</tr>
-<tr class="even">
-<td align="left">RAB8A</td>
-<td align="left">C1orf162</td>
-<td align="left">PARP8</td>
-<td align="left">IFI44</td>
-<td align="left">SLC12A6</td>
-<td align="left">CSGALNACT1</td>
-<td align="left">CD27</td>
-<td align="left">LIF</td>
-<td align="left">CD160</td>
-<td align="left">IFIT2</td>
-</tr>
-<tr class="odd">
-<td align="left">MYL12A</td>
-<td align="left">CD4</td>
-<td align="left">LENG8</td>
-<td align="left">PHACTR2</td>
-<td align="left">TRGC1</td>
-<td align="left">KLF2</td>
-<td align="left">CD74</td>
-<td align="left">PPARG</td>
-<td align="left">IFNG</td>
-<td align="left">EPSTI1</td>
-</tr>
-<tr class="even">
-<td align="left">SH3BGRL3</td>
-<td align="left">PLAC8</td>
-<td align="left">TRG-AS1</td>
-<td align="left">ABCB1</td>
-<td align="left">TXK</td>
-<td align="left">CD79B</td>
-<td align="left">HLA-DPA1</td>
-<td align="left">GADD45G</td>
-<td align="left">NR4A2</td>
-<td align="left">MX2</td>
-</tr>
-<tr class="odd">
-<td align="left">SAP18</td>
-<td align="left">LTB</td>
-<td align="left">NKTR</td>
-<td align="left">HIPK2</td>
-<td align="left">CD160</td>
-<td align="left">ZC2HC1A</td>
-<td align="left">LYST</td>
-<td align="left">CYSLTR1</td>
-<td align="left">BTG2</td>
-<td align="left">IFIH1</td>
-</tr>
-<tr class="even">
-<td align="left">VAMP8</td>
-<td align="left">TCF7</td>
-<td align="left">ZBTB20</td>
-<td align="left">TBC1D31</td>
-<td align="left">BCAS4</td>
-<td align="left">IL6R</td>
-<td align="left">APOBEC3G</td>
-<td align="left">ALAS1</td>
-<td align="left">CRTAM</td>
-<td align="left">IFI44</td>
-</tr>
-<tr class="odd">
-<td align="left">RPL18A</td>
-<td align="left">AP3M2</td>
-<td align="left">CHST12</td>
-<td align="left">RUNX2</td>
-<td align="left">DGKD</td>
-<td align="left">SOCS3</td>
-<td align="left">LINC00861</td>
-<td align="left">ZC2HC1A</td>
-<td align="left">RGCC</td>
-<td align="left">HERC6</td>
-</tr>
-<tr class="even">
-<td align="left">RPL29</td>
-<td align="left">NOSIP</td>
-<td align="left">PDE7A</td>
-<td align="left">IFNGR1</td>
-<td align="left">ZNF683</td>
-<td align="left">MAF</td>
-<td align="left">CLDND1</td>
-<td align="left">TMEM273</td>
-<td align="left">SPRY1</td>
-<td align="left">STAT1</td>
-</tr>
-<tr class="odd">
-<td align="left">ZFAS1</td>
-<td align="left">KDSR</td>
-<td align="left">PCNX1</td>
-<td align="left">RORA</td>
-<td align="left">VAV3</td>
-<td align="left">ICOS</td>
-<td align="left">NKG7</td>
-<td align="left">C1orf162</td>
-<td align="left">GZMB</td>
-<td align="left">IFI35</td>
-</tr>
-<tr class="even">
+<td align="left">GNLY</td>
+<td align="left">SRGN</td>
+<td align="left">TNFRSF4</td>
+<td align="left">TNFRSF18</td>
+<td align="left">ISG15</td>
 <td align="left">RPS8</td>
-<td align="left">RIPOR2</td>
-<td align="left">TMX4</td>
-<td align="left">MAN1A1</td>
-<td align="left">GZMA</td>
-<td align="left">NAMPT</td>
-<td align="left">F2R</td>
-<td align="left">TESPA1</td>
-<td align="left">GFOD1</td>
-<td align="left">OAS2</td>
-</tr>
-<tr class="odd">
-<td align="left">NEAT1</td>
-<td align="left">INPP4B</td>
-<td align="left">POLR2J3.#~2</td>
-<td align="left">ELK3</td>
-<td align="left">CTSW</td>
-<td align="left">CCR4</td>
-<td align="left">ITGB2</td>
-<td align="left">GNAQ</td>
-<td align="left">HIC1</td>
-<td align="left">DDX60L</td>
+<td align="left">IL7R</td>
 </tr>
 <tr class="even">
-<td align="left">LTB</td>
-<td align="left">LDHB</td>
-<td align="left">PAG1</td>
-<td align="left">AQP3</td>
-<td align="left">SRGAP3</td>
-<td align="left">ARID5B</td>
-<td align="left">LYAR</td>
-<td align="left">ACSL4</td>
-<td align="left">FASLG</td>
-<td align="left">IRF7</td>
+<td align="left">EOMES</td>
+<td align="left">GPR155</td>
+<td align="left">CLIC3</td>
+<td align="left">HOPX</td>
+<td align="left">CD69</td>
+<td align="left">TMSB10</td>
+<td align="left">TNFRSF4</td>
+<td align="left">IFI6</td>
+<td align="left">RPL32</td>
+<td align="left">KLRB1</td>
 </tr>
 <tr class="odd">
-<td align="left"></td>
-<td align="left">EEF1B2</td>
-<td align="left">AHNAK</td>
-<td align="left">NR1D2</td>
-<td align="left">PTGDR</td>
-<td align="left">MAST4</td>
-<td align="left">PYHIN1</td>
-<td align="left">LIMA1</td>
-<td align="left">GPR18</td>
-<td align="left">RTP4</td>
-</tr>
-<tr class="even">
-<td align="left"></td>
-<td align="left">RPS3A</td>
-<td align="left">MTRNR2L12</td>
-<td align="left">PNP</td>
-<td align="left">SERPINB6</td>
-<td align="left">CD4</td>
-<td align="left">LITAF</td>
-<td align="left">OSM</td>
-<td align="left">EVI2A</td>
-<td align="left">SAMD9L</td>
-</tr>
-<tr class="odd">
-<td align="left"></td>
-<td align="left">RPL9</td>
-<td align="left">OXNAD1</td>
-<td align="left">SPOCK2</td>
-<td align="left">TRGC2</td>
-<td align="left">CREM</td>
-<td align="left">APOBEC3C</td>
-<td align="left">PLIN2</td>
-<td align="left">TAGAP</td>
-<td align="left">DDX58</td>
-</tr>
-<tr class="even">
-<td align="left"></td>
-<td align="left">RPL5</td>
-<td align="left">CTSD</td>
-<td align="left">ERN1</td>
-<td align="left">TRG-AS1</td>
-<td align="left">LMNA</td>
-<td align="left">GZMM</td>
-<td align="left">IFNGR2</td>
-<td align="left">ZFP36L1</td>
-<td align="left">HELZ2</td>
-</tr>
-<tr class="odd">
-<td align="left"></td>
-<td align="left">RPL3</td>
-<td align="left">MT-ND3</td>
-<td align="left">PDE4D</td>
-<td align="left">CRTAM</td>
-<td align="left">CCR7</td>
-<td align="left">APMAP</td>
-<td align="left">PKIA</td>
-<td align="left">PGGHG</td>
-<td align="left">IFIT5</td>
-</tr>
-<tr class="even">
-<td align="left"></td>
-<td align="left">RPL11</td>
-<td align="left">DYNC1H1</td>
-<td align="left">CERK</td>
-<td align="left">ENTPD1</td>
-<td align="left">STAM</td>
-<td align="left">PTMS</td>
-<td align="left">PHLDA1</td>
-<td align="left">REL</td>
-<td align="left">HSH2D</td>
-</tr>
-<tr class="odd">
-<td align="left"></td>
-<td align="left">RPL29</td>
-<td align="left">GABPB1-AS1</td>
-<td align="left">TTC39C</td>
-<td align="left">FAM3C</td>
-<td align="left">GLRX</td>
-<td align="left">CEMIP2</td>
-<td align="left">TNFSF10</td>
-<td align="left">TNFSF14</td>
-<td align="left">DDX60</td>
-</tr>
-<tr class="even">
-<td align="left"></td>
-<td align="left">RPL22</td>
-<td align="left">MT-ND4L</td>
-<td align="left">NDRG1</td>
-<td align="left">DAPK2</td>
-<td align="left">CD28</td>
-<td align="left">CD81</td>
-<td align="left">CCDC71L</td>
-<td align="left">SDCBP</td>
-<td align="left">PARP9</td>
-</tr>
-<tr class="odd">
-<td align="left"></td>
-<td align="left">RPL35A</td>
-<td align="left">NSD1</td>
-<td align="left">JAML</td>
-<td align="left">RAB3GAP1</td>
-<td align="left">TNFRSF1B</td>
-<td align="left">GIMAP4</td>
-<td align="left">CENPV</td>
-<td align="left">ID2</td>
-<td align="left">OASL</td>
-</tr>
-<tr class="even">
-<td align="left"></td>
-<td align="left">RPS13</td>
-<td align="left">AKNA</td>
-<td align="left">GPR65</td>
-<td align="left">CD7</td>
-<td align="left">RELB</td>
-<td align="left">CCSER2</td>
-<td align="left">DUSP6</td>
-<td align="left">PRF1</td>
-<td align="left">PLSCR1</td>
-</tr>
-<tr class="odd">
-<td align="left"></td>
-<td align="left">RPL18A</td>
-<td align="left">MT-ND1</td>
-<td align="left">YWHAQ</td>
-<td align="left">CSF1</td>
-<td align="left">PIM2</td>
-<td align="left">PRKCB</td>
-<td align="left">AHR</td>
-<td align="left">PTGER4</td>
-<td align="left">PARP12</td>
-</tr>
-<tr class="even">
-<td align="left"></td>
-<td align="left">RPL10A</td>
-<td align="left">MDM4</td>
-<td align="left">LMO4</td>
-<td align="left">TNIP3</td>
-<td align="left">FRMD4B</td>
-<td align="left">SYNE1</td>
-<td align="left">METTL8</td>
-<td align="left">FABP5</td>
-<td align="left">TNFSF10</td>
-</tr>
-<tr class="odd">
-<td align="left"></td>
-<td align="left">RPS25</td>
-<td align="left">MT-ND2</td>
-<td align="left">MIS18BP1</td>
-<td align="left">AOAH</td>
-<td align="left">GBP2</td>
-<td align="left">ARAP2</td>
-<td align="left">NME1</td>
-<td align="left">PHLDA1</td>
-<td align="left">PARP14</td>
-</tr>
-<tr class="even">
-<td align="left"></td>
-<td align="left">RPS5</td>
-<td align="left">CLEC2D</td>
-<td align="left">PMVK</td>
-<td align="left">LINC01871</td>
-<td align="left">CMTM6</td>
-<td align="left">PPP1R14B</td>
-<td align="left">NDFIP2</td>
+<td align="left">HLA-DQA1</td>
+<td align="left">ITGA1</td>
+<td align="left">THEMIS</td>
 <td align="left">KLRD1</td>
-<td align="left">GBP4</td>
-</tr>
-<tr class="odd">
-<td align="left"></td>
-<td align="left">RPL14</td>
-<td align="left">ASH1L</td>
-<td align="left">ZNRF1</td>
-<td align="left">SCML4</td>
-<td align="left">DNPH1</td>
-<td align="left">DGKZ</td>
-<td align="left">LINC01943</td>
-<td align="left">PTPN7</td>
-<td align="left">STAT2</td>
+<td align="left">CCL4</td>
+<td align="left">LTB</td>
+<td align="left">CHDH</td>
+<td align="left">IFI44L</td>
+<td align="left">RPL34</td>
+<td align="left">RPLP1</td>
 </tr>
 <tr class="even">
-<td align="left"></td>
-<td align="left">PFDN5</td>
-<td align="left">ANKRD13D</td>
-<td align="left">DDIT4</td>
-<td align="left">GSTP1</td>
-<td align="left">RAB11FIP1</td>
-<td align="left">TC2N</td>
-<td align="left">ICOS</td>
-<td align="left">SH2D2A</td>
-<td align="left">TRIM22</td>
+<td align="left">HLA-DRA</td>
+<td align="left">SMURF2</td>
+<td align="left">FKBP11</td>
+<td align="left">KLRC1</td>
+<td align="left">CCL4L2</td>
+<td align="left">IL2RA</td>
+<td align="left">IL17RB</td>
+<td align="left">RSAD2</td>
+<td align="left">RPS23</td>
+<td align="left">SLC4A10</td>
 </tr>
 <tr class="odd">
-<td align="left"></td>
-<td align="left">UQCRB</td>
-<td align="left">N4BP2L2</td>
-<td align="left">OSTF1</td>
-<td align="left">IL2RB</td>
-<td align="left">FAS</td>
-<td align="left">ITGB1</td>
-<td align="left">P2RX5</td>
-<td align="left">IER2</td>
-<td align="left">TRIM25</td>
+<td align="left">DTHD1</td>
+<td align="left">CD226</td>
+<td align="left">RFLNB</td>
+<td align="left">CD63</td>
+<td align="left">EGR2</td>
+<td align="left">FOXP3</td>
+<td align="left">IL13</td>
+<td align="left">EIF2AK2</td>
+<td align="left">EEF1A1</td>
+<td align="left">IL4I1</td>
 </tr>
 <tr class="even">
-<td align="left"></td>
-<td align="left">BTF3</td>
+<td align="left">KLRG1</td>
+<td align="left">THEMIS</td>
+<td align="left">RGL4</td>
+<td align="left">CCL5</td>
+<td align="left">EGR3</td>
+<td align="left">CTLA4</td>
+<td align="left">HSP90AB1</td>
+<td align="left">HERC5</td>
+<td align="left">RPS12</td>
+<td align="left">TNFSF13B</td>
+</tr>
+<tr class="odd">
+<td align="left">HLA-DQB1</td>
+<td align="left">THUMPD3-AS1</td>
+<td align="left">LGALS1</td>
+<td align="left">KIR2DL4</td>
+<td align="left">CCL3</td>
+<td align="left">RTKN2</td>
+<td align="left">GATA3</td>
+<td align="left">LY6E</td>
+<td align="left">RPL39</td>
+<td align="left">LST1</td>
+</tr>
+<tr class="even">
+<td align="left">GZMH</td>
+<td align="left">AC245297.3</td>
 <td align="left">CD2</td>
+<td align="left">TRDC</td>
+<td align="left">CCL3L1</td>
+<td align="left">TBC1D4</td>
+<td align="left">RPLP0</td>
+<td align="left">IFIT1</td>
+<td align="left">RPL10</td>
+<td align="left">NCR3</td>
+</tr>
+<tr class="odd">
+<td align="left">HLA-DRB1</td>
+<td align="left">ITGAE</td>
+<td align="left">RNF167</td>
+<td align="left">CLNK</td>
+<td align="left">NR4A1</td>
+<td align="left">TNFRSF18</td>
+<td align="left">IL5</td>
+<td align="left">ISG20</td>
+<td align="left">RPL30</td>
+<td align="left">PRR5</td>
+</tr>
+<tr class="even">
+<td align="left">HLA-DRB5</td>
+<td align="left">GRAP2</td>
+<td align="left">CD3G</td>
+<td align="left">CXXC5</td>
+<td align="left">XCL1</td>
+<td align="left">IL1R1</td>
+<td align="left">HPGDS</td>
+<td align="left">XAF1</td>
+<td align="left">RPS6</td>
+<td align="left">CCR6</td>
+</tr>
+<tr class="odd">
+<td align="left">SAMD3</td>
+<td align="left">CD8A</td>
+<td align="left">COMMD8</td>
+<td align="left">PIK3AP1</td>
+<td align="left">XCL2</td>
+<td align="left">LINC01943</td>
+<td align="left">IL4</td>
+<td align="left">MX1</td>
+<td align="left">TPT1</td>
+<td align="left">TMIGD2</td>
+</tr>
+<tr class="even">
+<td align="left">HLA-DPB1</td>
+<td align="left">SUN2</td>
+<td align="left">UBTF</td>
+<td align="left">LINC02446</td>
+<td align="left">NFKBID</td>
+<td align="left">LTA</td>
+<td align="left">PTGDR2</td>
+<td align="left">IFIT3</td>
+<td align="left">RPL13</td>
+<td align="left">NRIP1</td>
+</tr>
+<tr class="odd">
+<td align="left">CMC1</td>
+<td align="left">AC004687.1</td>
 <td align="left">S100A4</td>
-<td align="left">GNPTAB</td>
-<td align="left">PIM3</td>
-<td align="left">HMGB2</td>
-<td align="left">PDLIM5</td>
-<td align="left">NUCB2</td>
-<td align="left">GBP1</td>
+<td align="left">KLRC2</td>
+<td align="left">EGR1</td>
+<td align="left">HPGD</td>
+<td align="left">KRT1</td>
+<td align="left">CMPK2</td>
+<td align="left">MAL</td>
+<td align="left">CEBPD</td>
+</tr>
+<tr class="even">
+<td align="left">CST7</td>
+<td align="left">TTC14</td>
+<td align="left">S100A10</td>
+<td align="left">IKZF2</td>
+<td align="left">DUSP2</td>
+<td align="left">HAPLN3</td>
+<td align="left">CACNA1D</td>
+<td align="left">OAS1</td>
+<td align="left">CD40LG</td>
+<td align="left">CTSH</td>
 </tr>
 <tr class="odd">
-<td align="left"></td>
-<td align="left">EIF3G</td>
-<td align="left">MYO1F</td>
-<td align="left">RGS14</td>
-<td align="left">PTPN22</td>
-<td align="left">TFRC</td>
-<td align="left">MXD4</td>
-<td align="left">BATF</td>
+<td align="left">SH2D1A</td>
+<td align="left">SPN</td>
+<td align="left">HMOX2</td>
+<td align="left">CAPN12</td>
+<td align="left">TNF</td>
+<td align="left">ZC3H12D</td>
+<td align="left">GATA3-AS1</td>
+<td align="left">OAS3</td>
+<td align="left">CCR7</td>
+<td align="left">DPP4</td>
+</tr>
+<tr class="even">
+<td align="left">CD27</td>
+<td align="left">PARP8</td>
+<td align="left">RAB8A</td>
+<td align="left">SLC12A6</td>
+<td align="left">CD160</td>
+<td align="left">CSGALNACT1</td>
+<td align="left">LIF</td>
+<td align="left">IFIT2</td>
+<td align="left">C1orf162</td>
+<td align="left">IFI44</td>
+</tr>
+<tr class="odd">
+<td align="left">CD74</td>
+<td align="left">LENG8</td>
+<td align="left">MYL12A</td>
+<td align="left">TRGC1</td>
+<td align="left">IFNG</td>
+<td align="left">KLF2</td>
+<td align="left">PPARG</td>
+<td align="left">EPSTI1</td>
+<td align="left">CD4</td>
+<td align="left">PHACTR2</td>
+</tr>
+<tr class="even">
+<td align="left">HLA-DPA1</td>
+<td align="left">TRG-AS1</td>
+<td align="left">SH3BGRL3</td>
+<td align="left">TXK</td>
+<td align="left">NR4A2</td>
+<td align="left">CD79B</td>
+<td align="left">GADD45G</td>
+<td align="left">MX2</td>
+<td align="left">PLAC8</td>
+<td align="left">ABCB1</td>
+</tr>
+<tr class="odd">
+<td align="left">LYST</td>
+<td align="left">NKTR</td>
+<td align="left">SAP18</td>
+<td align="left">CD160</td>
+<td align="left">BTG2</td>
+<td align="left">ZC2HC1A</td>
+<td align="left">CYSLTR1</td>
+<td align="left">IFIH1</td>
+<td align="left">LTB</td>
+<td align="left">HIPK2</td>
+</tr>
+<tr class="even">
+<td align="left">APOBEC3G</td>
+<td align="left">ZBTB20</td>
+<td align="left">VAMP8</td>
+<td align="left">BCAS4</td>
+<td align="left">CRTAM</td>
+<td align="left">IL6R</td>
+<td align="left">ALAS1</td>
+<td align="left">IFI44</td>
+<td align="left">TCF7</td>
+<td align="left">TBC1D31</td>
+</tr>
+<tr class="odd">
+<td align="left">LINC00861</td>
+<td align="left">CHST12</td>
+<td align="left">RPL18A</td>
+<td align="left">DGKD</td>
+<td align="left">RGCC</td>
+<td align="left">SOCS3</td>
+<td align="left">ZC2HC1A</td>
+<td align="left">HERC6</td>
+<td align="left">AP3M2</td>
+<td align="left">RUNX2</td>
+</tr>
+<tr class="even">
+<td align="left">CLDND1</td>
+<td align="left">PDE7A</td>
+<td align="left">RPL29</td>
+<td align="left">ZNF683</td>
+<td align="left">SPRY1</td>
+<td align="left">MAF</td>
+<td align="left">TMEM273</td>
+<td align="left">STAT1</td>
+<td align="left">NOSIP</td>
+<td align="left">IFNGR1</td>
+</tr>
+<tr class="odd">
 <td align="left">NKG7</td>
-<td align="left">SAMD9</td>
+<td align="left">PCNX1</td>
+<td align="left">ZFAS1</td>
+<td align="left">VAV3</td>
+<td align="left">GZMB</td>
+<td align="left">ICOS</td>
+<td align="left">C1orf162</td>
+<td align="left">IFI35</td>
+<td align="left">KDSR</td>
+<td align="left">RORA</td>
 </tr>
 <tr class="even">
-<td align="left"></td>
-<td align="left">RPL36AL</td>
-<td align="left">PCSK7</td>
-<td align="left">RPSA</td>
-<td align="left">MATK</td>
-<td align="left">FURIN</td>
-<td align="left">YPEL3</td>
-<td align="left">THADA</td>
-<td align="left">NFKBIA</td>
-<td align="left">IFITM1</td>
-</tr>
-<tr class="odd">
-<td align="left"></td>
-<td align="left">EIF3K</td>
-<td align="left">MTRNR2L1</td>
-<td align="left">RPL41</td>
-<td align="left">PLA2G16</td>
-<td align="left">BATF</td>
+<td align="left">F2R</td>
+<td align="left">TMX4</td>
+<td align="left">RPS8</td>
+<td align="left">GZMA</td>
+<td align="left">GFOD1</td>
+<td align="left">NAMPT</td>
+<td align="left">TESPA1</td>
+<td align="left">OAS2</td>
 <td align="left">RIPOR2</td>
-<td align="left">CREM</td>
-<td align="left">RILPL2</td>
-<td align="left">NT5C3A</td>
-</tr>
-<tr class="even">
-<td align="left"></td>
-<td align="left">COX4I1</td>
-<td align="left">ACAP1</td>
-<td align="left">RPS24</td>
-<td align="left">SEMA4D</td>
-<td align="left">MIR4435-2HG</td>
-<td align="left">MT2A</td>
-<td align="left">NR3C1</td>
-<td align="left">TIGIT</td>
-<td align="left">C19orf66</td>
+<td align="left">MAN1A1</td>
 </tr>
 <tr class="odd">
-<td align="left"></td>
-<td align="left">COMMD6</td>
-<td align="left">TRIM56</td>
-<td align="left">SOD1</td>
-<td align="left">CCDC69</td>
-<td align="left">AQP3</td>
-<td align="left">LIMD2</td>
-<td align="left">SLAMF1</td>
-<td align="left">IPCEF1</td>
-<td align="left">LAP3</td>
+<td align="left">ITGB2</td>
+<td align="left">POLR2J3.#~2</td>
+<td align="left">NEAT1</td>
+<td align="left">CTSW</td>
+<td align="left">HIC1</td>
+<td align="left">CCR4</td>
+<td align="left">GNAQ</td>
+<td align="left">DDX60L</td>
+<td align="left">INPP4B</td>
+<td align="left">ELK3</td>
 </tr>
 <tr class="even">
+<td align="left">LYAR</td>
+<td align="left">PAG1</td>
+<td align="left">LTB</td>
+<td align="left">SRGAP3</td>
+<td align="left">FASLG</td>
+<td align="left">ARID5B</td>
+<td align="left">ACSL4</td>
+<td align="left">IRF7</td>
+<td align="left">LDHB</td>
+<td align="left">AQP3</td>
+</tr>
+<tr class="odd">
+<td align="left">PYHIN1</td>
+<td align="left">AHNAK</td>
 <td align="left"></td>
-<td align="left">GTF3A</td>
-<td align="left">ITM2C</td>
-<td align="left">EMP3</td>
-<td align="left">PRKACB</td>
-<td align="left">LIMS1</td>
+<td align="left">PTGDR</td>
+<td align="left">GPR18</td>
+<td align="left">MAST4</td>
+<td align="left">LIMA1</td>
+<td align="left">RTP4</td>
+<td align="left">EEF1B2</td>
+<td align="left">NR1D2</td>
+</tr>
+<tr class="even">
+<td align="left">LITAF</td>
+<td align="left">MTRNR2L12</td>
+<td align="left"></td>
+<td align="left">SERPINB6</td>
+<td align="left">EVI2A</td>
+<td align="left">CD4</td>
+<td align="left">OSM</td>
+<td align="left">SAMD9L</td>
+<td align="left">RPS3A</td>
+<td align="left">PNP</td>
+</tr>
+<tr class="odd">
+<td align="left">APOBEC3C</td>
+<td align="left">OXNAD1</td>
+<td align="left"></td>
+<td align="left">TRGC2</td>
+<td align="left">TAGAP</td>
+<td align="left">CREM</td>
+<td align="left">PLIN2</td>
+<td align="left">DDX58</td>
+<td align="left">RPL9</td>
+<td align="left">SPOCK2</td>
+</tr>
+<tr class="even">
+<td align="left">GZMM</td>
+<td align="left">CTSD</td>
+<td align="left"></td>
+<td align="left">TRG-AS1</td>
+<td align="left">ZFP36L1</td>
+<td align="left">LMNA</td>
+<td align="left">IFNGR2</td>
+<td align="left">HELZ2</td>
+<td align="left">RPL5</td>
+<td align="left">ERN1</td>
+</tr>
+<tr class="odd">
+<td align="left">APMAP</td>
+<td align="left">MT-ND3</td>
+<td align="left"></td>
+<td align="left">CRTAM</td>
+<td align="left">PGGHG</td>
+<td align="left">CCR7</td>
+<td align="left">PKIA</td>
+<td align="left">IFIT5</td>
+<td align="left">RPL3</td>
+<td align="left">PDE4D</td>
+</tr>
+<tr class="even">
+<td align="left">PTMS</td>
+<td align="left">DYNC1H1</td>
+<td align="left"></td>
+<td align="left">ENTPD1</td>
+<td align="left">REL</td>
+<td align="left">STAM</td>
+<td align="left">PHLDA1</td>
+<td align="left">HSH2D</td>
+<td align="left">RPL11</td>
+<td align="left">CERK</td>
+</tr>
+<tr class="odd">
+<td align="left">CEMIP2</td>
+<td align="left">GABPB1-AS1</td>
+<td align="left"></td>
+<td align="left">FAM3C</td>
+<td align="left">TNFSF14</td>
+<td align="left">GLRX</td>
+<td align="left">TNFSF10</td>
+<td align="left">DDX60</td>
+<td align="left">RPL29</td>
+<td align="left">TTC39C</td>
+</tr>
+<tr class="even">
+<td align="left">CD81</td>
+<td align="left">MT-ND4L</td>
+<td align="left"></td>
+<td align="left">DAPK2</td>
+<td align="left">SDCBP</td>
+<td align="left">CD28</td>
+<td align="left">CCDC71L</td>
+<td align="left">PARP9</td>
+<td align="left">RPL22</td>
+<td align="left">NDRG1</td>
+</tr>
+<tr class="odd">
+<td align="left">GIMAP4</td>
+<td align="left">NSD1</td>
+<td align="left"></td>
+<td align="left">RAB3GAP1</td>
+<td align="left">ID2</td>
+<td align="left">TNFRSF1B</td>
+<td align="left">CENPV</td>
+<td align="left">OASL</td>
+<td align="left">RPL35A</td>
+<td align="left">JAML</td>
+</tr>
+<tr class="even">
+<td align="left">CCSER2</td>
+<td align="left">AKNA</td>
+<td align="left"></td>
+<td align="left">CD7</td>
+<td align="left">PRF1</td>
+<td align="left">RELB</td>
+<td align="left">DUSP6</td>
+<td align="left">PLSCR1</td>
+<td align="left">RPS13</td>
+<td align="left">GPR65</td>
+</tr>
+<tr class="odd">
+<td align="left">PRKCB</td>
+<td align="left">MT-ND1</td>
+<td align="left"></td>
+<td align="left">CSF1</td>
+<td align="left">PTGER4</td>
+<td align="left">PIM2</td>
+<td align="left">AHR</td>
+<td align="left">PARP12</td>
+<td align="left">RPL18A</td>
+<td align="left">YWHAQ</td>
+</tr>
+<tr class="even">
+<td align="left">SYNE1</td>
+<td align="left">MDM4</td>
+<td align="left"></td>
+<td align="left">TNIP3</td>
+<td align="left">FABP5</td>
+<td align="left">FRMD4B</td>
+<td align="left">METTL8</td>
+<td align="left">TNFSF10</td>
+<td align="left">RPL10A</td>
+<td align="left">LMO4</td>
+</tr>
+<tr class="odd">
+<td align="left">ARAP2</td>
+<td align="left">MT-ND2</td>
+<td align="left"></td>
+<td align="left">AOAH</td>
+<td align="left">PHLDA1</td>
+<td align="left">GBP2</td>
+<td align="left">NME1</td>
+<td align="left">PARP14</td>
+<td align="left">RPS25</td>
+<td align="left">MIS18BP1</td>
+</tr>
+<tr class="even">
+<td align="left">PPP1R14B</td>
+<td align="left">CLEC2D</td>
+<td align="left"></td>
+<td align="left">LINC01871</td>
+<td align="left">KLRD1</td>
+<td align="left">CMTM6</td>
+<td align="left">NDFIP2</td>
+<td align="left">GBP4</td>
+<td align="left">RPS5</td>
+<td align="left">PMVK</td>
+</tr>
+<tr class="odd">
+<td align="left">DGKZ</td>
+<td align="left">ASH1L</td>
+<td align="left"></td>
+<td align="left">SCML4</td>
+<td align="left">PTPN7</td>
+<td align="left">DNPH1</td>
+<td align="left">LINC01943</td>
+<td align="left">STAT2</td>
+<td align="left">RPL14</td>
+<td align="left">ZNRF1</td>
+</tr>
+<tr class="even">
+<td align="left">TC2N</td>
+<td align="left">ANKRD13D</td>
+<td align="left"></td>
+<td align="left">GSTP1</td>
+<td align="left">SH2D2A</td>
+<td align="left">RAB11FIP1</td>
+<td align="left">ICOS</td>
+<td align="left">TRIM22</td>
+<td align="left">PFDN5</td>
+<td align="left">DDIT4</td>
+</tr>
+<tr class="odd">
+<td align="left">ITGB1</td>
+<td align="left">N4BP2L2</td>
+<td align="left"></td>
+<td align="left">IL2RB</td>
+<td align="left">IER2</td>
+<td align="left">FAS</td>
+<td align="left">P2RX5</td>
+<td align="left">TRIM25</td>
+<td align="left">UQCRB</td>
+<td align="left">OSTF1</td>
+</tr>
+<tr class="even">
+<td align="left">HMGB2</td>
+<td align="left">CD2</td>
+<td align="left"></td>
+<td align="left">GNPTAB</td>
+<td align="left">NUCB2</td>
+<td align="left">PIM3</td>
+<td align="left">PDLIM5</td>
+<td align="left">GBP1</td>
+<td align="left">BTF3</td>
+<td align="left">S100A4</td>
+</tr>
+<tr class="odd">
+<td align="left">MXD4</td>
+<td align="left">MYO1F</td>
+<td align="left"></td>
+<td align="left">PTPN22</td>
+<td align="left">NKG7</td>
+<td align="left">TFRC</td>
+<td align="left">BATF</td>
+<td align="left">SAMD9</td>
+<td align="left">EIF3G</td>
+<td align="left">RGS14</td>
+</tr>
+<tr class="even">
+<td align="left">YPEL3</td>
+<td align="left">PCSK7</td>
+<td align="left"></td>
+<td align="left">MATK</td>
+<td align="left">NFKBIA</td>
+<td align="left">FURIN</td>
+<td align="left">THADA</td>
+<td align="left">IFITM1</td>
+<td align="left">RPL36AL</td>
+<td align="left">RPSA</td>
+</tr>
+<tr class="odd">
+<td align="left">RIPOR2</td>
+<td align="left">MTRNR2L1</td>
+<td align="left"></td>
+<td align="left">PLA2G16</td>
+<td align="left">RILPL2</td>
+<td align="left">BATF</td>
+<td align="left">CREM</td>
+<td align="left">NT5C3A</td>
+<td align="left">EIF3K</td>
+<td align="left">RPL41</td>
+</tr>
+<tr class="even">
+<td align="left">MT2A</td>
+<td align="left">ACAP1</td>
+<td align="left"></td>
+<td align="left">SEMA4D</td>
+<td align="left">TIGIT</td>
+<td align="left">MIR4435-2HG</td>
+<td align="left">NR3C1</td>
+<td align="left">C19orf66</td>
+<td align="left">COX4I1</td>
+<td align="left">RPS24</td>
+</tr>
+<tr class="odd">
+<td align="left">LIMD2</td>
+<td align="left">TRIM56</td>
+<td align="left"></td>
+<td align="left">CCDC69</td>
+<td align="left">IPCEF1</td>
+<td align="left">AQP3</td>
+<td align="left">SLAMF1</td>
+<td align="left">LAP3</td>
+<td align="left">COMMD6</td>
+<td align="left">SOD1</td>
+</tr>
+<tr class="even">
 <td align="left">CXCR4</td>
-<td align="left">TIMP1</td>
+<td align="left">ITM2C</td>
+<td align="left"></td>
+<td align="left">PRKACB</td>
 <td align="left">ZFP36</td>
+<td align="left">LIMS1</td>
+<td align="left">TIMP1</td>
 <td align="left">DTX3L</td>
+<td align="left">GTF3A</td>
+<td align="left">EMP3</td>
 </tr>
 </tbody>
 </table>
@@ -1321,17 +1324,571 @@ draw(heatmap_list, heatmap_legend_list =lgd_list, padding = unit(c(0.5, 0.5, 2, 
 
 ![](figure_4_files/figure-markdown_github/nice_heatmap-9.png)
 
+After inspecting all of the top marker genes for each cluster, we assigned the clusters specific annotations, which are shown below.
+
+``` python
+
+annotation_dict = {"1" : "CD8 T (GZMK)",
+                  "2" : "quiesCD8 T ",
+                  "3" : "CD8 T (CLIC3)",
+                  "4" : "Tgd (TRDC)",
+                  "5" : "CD8 T (EGR2)",
+                  "6" : "CD4 Treg (FOXP3)",
+                  "7" : "CD4 Th2 (GATA3)",
+                  "8" : "CD4 ThIFNR (ISG15)",
+                  "9" : "CD4 T (CD40LG)",
+                  "10" : "CD4 Th17 (RORA)"}
+
+color_dict = dict(zip(annotation_dict.values(), t_cell_harmonized.uns["leiden_labels_colors"]))
+
+t_cell_harmonized.obs["annotation"] = [annotation_dict[c] for c in t_cell_harmonized.obs["leiden_labels"]]
+figure = sc.pl.umap(t_cell_harmonized, color = ["annotation"],
+                    palette = color_dict, return_fig = True, show = False, legend_loc = "on data")
+figure.set_size_inches(8, 8)
+figure
+```
+
+<img src="figure_4_files/figure-markdown_github/annotations-1.png" width="768" />
+
+# GSEA analysis
+
+To validate the annotations of our Th subsets, we performed GSEA, first using published helper T cell gene sets from Seumois et al. We can see that the clusters we defined as Th2, Th7 and ThIFNR do in fact have those phenotypes based on these gene sets
+
+``` python
+
+de_res = t_cell_harmonized.varm["de_res"]
+de_res = pd.DataFrame(de_res, index = t_cell_harmonized.var_names)
+
+pseudo_stats = pd.DataFrame()
+for cl in set(t_cell_harmonized.obs["leiden_labels"]) :
+    df_dict = {"log_fc": t_cell_harmonized.varm["de_res"][
+                   "pseudobulk_log_fold_change:{clust}".format(clust=cl)],
+               "pval": t_cell_harmonized.varm["de_res"]["pseudobulk_p_val:{clust}".format(clust=cl)],
+               "percent_cells": t_cell_harmonized.varm["de_res"]["percentage:{clust}".format(clust=cl)]}
+    df = pd.DataFrame(df_dict, index=t_cell_harmonized.var.index)
+    df["cluster"] = f"cluster_{cl}"
+    df["feature"] = df.index.values
+    pseudo_stats = pseudo_stats.append(df)
+```
+
+<img src="figure_4_files/figure-markdown_github/get_pseudobulk_stats-3.png" width="768" />
+
+``` r
+library(glue)
+library(fgsea)
+library(ggpubr)
+
+pseudo_stats <- reticulate::py$pseudo_stats
+
+# Adjust the old cluster names to be new annotations
+annotations <- c("1" = "CD8 T (GZMK)",
+                  "2" = "quiesCD8 T ",
+                  "3" = "CD8 T (CLIC3)",
+                  "4" = "Tgd (TRDC)",
+                  "5" = "CD8 T (EGR2)",
+                  "6" = "CD4 Treg (FOXP3)",
+                  "7" = "CD4 Th2 (GATA3)",
+                  "8" = "CD4 ThIFNR (ISG15)",
+                  "9" = "CD4 T (CD40LG)",
+                  "10" = "CD4 Th17 (RORA)")
+
+pseudo_stats$annotation <- sapply(pseudo_stats$cluster, function(x){
+  cl <- sub("cluster_", "", x)
+  return(annotations[cl])
+})
+
+# Load in the Seumois datasets
+
+seumois_df <- read.csv("/home/nealpsmith/projects/medoff/data/gene_sets/seumois_gene_sets.csv")
+
+seumois_gene_sets <- lapply(colnames(seumois_df), function(n){
+  genes <- seumois_df[[n]]
+  genes <- genes[genes != ""]
+  return(genes)
+})
+names(seumois_gene_sets) <- colnames(seumois_df)
+
+
+## Want to make the three we want for the paper ##
+pair_df = data.frame("cluster" = c("7", "10", "8"),
+                     "gene_set" = c("Th2", "Th17", "IFN"))
+
+
+
+plot_list <- list()
+for (i in 1:nrow(pair_df)){
+  cluster <- pair_df$cluster[i]
+  gs <- pair_df$gene_set[i]
+
+  pseudo_clust <- pseudo_stats[pseudo_stats$cluster == glue("cluster_{cluster}"),]
+
+  ranks <- pseudo_clust %>%
+    dplyr::filter(percent_cells > 5) %>%
+    dplyr::arrange(desc(log_fc)) %>%
+    dplyr::select(feature, log_fc) %>%
+    deframe(.)
+
+  fgsea_res <- fgsea(pathways = seumois_gene_sets, stats = ranks, nperm = 10000)
+
+  annot <- annotations[[cluster]]
+
+  nes <- round(fgsea_res$NES[fgsea_res$pathway == gs], 3)
+  pval <- round(fgsea_res$pval[fgsea_res$pathway == gs], 3)
+  n_genes <- fgsea_res$size[fgsea_res$pathway == gs]
+
+  rnk <- rank(-ranks)
+  ord <- order(rnk)
+
+  statsAdj <- ranks[ord]
+  statsAdj <- sign(statsAdj) * (abs(statsAdj) ^ 1)
+  statsAdj <- statsAdj / max(abs(statsAdj))
+
+  pathway <- unname(as.vector(na.omit(match(seumois_gene_sets[[gs]], names(statsAdj)))))
+  pathway <- sort(pathway)
+
+  gseaRes <- calcGseaStat(statsAdj, selectedStats = pathway,
+                            returnAllExtremes = TRUE)
+
+  bottoms <- gseaRes$bottoms
+  tops <- gseaRes$tops
+
+  n <- length(statsAdj)
+  xs <- as.vector(rbind(pathway - 1, pathway))
+  ys <- as.vector(rbind(bottoms, tops))
+  toPlot <- data.frame(x=c(0, xs, n + 1), y=c(0, ys, 0))
+
+  diff <- (max(tops) - min(bottoms)) / 8
+
+  x=y=NULL
+
+  p <- ggplot(toPlot, aes(x = x, y = y)) +
+    # geom_point(color="blue", size=0.1) +
+    geom_line(color="blue") +
+    geom_hline(yintercept=0, colour="black") +
+    geom_segment(data=data.frame(x=pathway),
+                     mapping=aes(x=x, y=-0.15,
+                                 xend=x, yend=-0.25),
+                     size=0.4) +
+    scale_y_continuous(expand = c(0.05,0.05)) +
+    xlab("Rank") + ylab("Enrichment score") +
+    geom_text(aes(label = "")) +
+    annotate("text", label = glue("NES : {nes}"), x = length(ranks) - 1000, y  =0.9) +
+    annotate("text", label = glue("p-value : {pval}"), x = length(ranks) - 1000, y = 0.8) +
+    annotate("text", label = glue("# genes : {n_genes}"), x = length(ranks) - 1000, y = 0.7) +
+    ggtitle(glue("{gs} signature : {annot}")) +
+    theme_classic(base_size = 12)
+
+  plot_list <- c(plot_list, list(p))
+}
+
+plots <- ggarrange(plotlist = plot_list, ncol = 2, nrow = 2)
+plots
+```
+
+![](figure_4_files/figure-markdown_github/th_gsea-5.png)
+
+To further validate these annotations, we performed GSEA using gene sets we devised ourselves from published data from Cano-Gamez et al. In this paper, they published bulk RNAseq samples of naive T cells that were stimulated with phenotype-skewing cytokines (IL4, IFNG). We derived our gene sets by performing an OVA DEG approach, comparing Th2 vs. all other Th subsets, Th17 vs. all other subsets etc. We see the same patterns as we did with the published gene sets, giving us confidence in our annotations.
+
+``` r
+library(DESeq2)
+
+meta_data <- read.csv("/home/nealpsmith/projects/medoff/cano_bulk/data/NCOMMS-19-7936188_bulk_RNAseq_metadata.txt", sep = "\t",
+                      row.names = 2)
+meta_data$row.names <- NULL
+count_data <- read.csv("/home/nealpsmith/projects/medoff/cano_bulk/data/NCOMMS-19-7936188_bulk_RNAseq_raw_counts.txt", sep = "\t")
+
+#
+# genes <- rownames(count_data)
+# mart <- useDataset("hsapiens_gene_ensembl", useMart("ENSEMBL_MART_ENSEMBL"))
+# annot<-getBM(c("ensembl_gene_id", "hgnc_symbol"), mart=mart)
+
+# write.csv(annot, "/home/nealpsmith/data/useful/human_ensembl_to_hgnc.csv")
+annot <- read.csv("/home/nealpsmith/data/useful/human_ensembl_to_hgnc.csv")
+# lets get the genes for the counts
+count_temp <- count_data %>%
+rownames_to_column(var = "ensembl_gene_id") %>%
+dplyr::left_join(annot, by = "ensembl_gene_id") %>%
+dplyr::filter(hgnc_symbol != "") %>%
+distinct(hgnc_symbol, .keep_all = TRUE) %>%
+column_to_rownames(var = "hgnc_symbol") %>%
+dplyr::select(-ensembl_gene_id)
+
+# Lets filter
+meta_temp <- meta_data %>%
+dplyr::filter(cell_type == "CD4_Naive", cytokine_condition %in% c("Th1", "Th2", "Th17", "IFNB"))
+
+conditions <-c("Th1", "Th2", "Th17", "IFNB")
+
+sig_gene_list <- list()
+for (test_condition in conditions){
+meta_temp$in_subset <- ifelse(meta_temp$cytokine_condition == test_condition, "yes", "no")
+
+count_temp <- count_temp[,rownames(meta_temp)]
+stopifnot(rownames(meta_temp) == colnames(count_temp))
+
+dds <- DESeqDataSetFromMatrix(countData = count_temp,
+                              colData = meta_temp,
+                              design = ~in_subset)
+# Filtering
+keep <- rowSums(counts(dds) >= 10) >= round(nrow(meta_temp) * 0.66)
+dds <- dds[keep,]
+dds <- DESeq(dds)
+res <- results(dds)
+plot_data <- as.data.frame(res)
+
+sig_genes <- plot_data %>%
+  arrange(plot_data$pvalue)%>%
+  dplyr::filter(log2FoldChange > 1, padj < 0.1) %>%
+  rownames()
+sig_gene_list[[test_condition]] <- sig_genes
+
+}
+max_ln<-max(sapply(sig_gene_list, length))
+
+sig_df <- data.frame("Th1" = c(sig_gene_list$Th1, rep(NA, max_ln - length(sig_gene_list$Th1))),
+                   "Th2" = c(sig_gene_list$Th2, rep(NA, max_ln - length(sig_gene_list$Th2))),
+                   "Th17" = c(sig_gene_list$Th17, rep(NA, max_ln - length(sig_gene_list$Th17))),
+                   "IFNB" = c(c(sig_gene_list$IFNB, rep(NA, max_ln - length(sig_gene_list$IFNB)))))
+
+
+pair_df = data.frame("cluster" = c("7", "10", "8"),
+                     "gene_set" = c("Th2", "Th17", "IFNB"))
+
+plot_list <- list()
+for (i in 1:nrow(pair_df)){
+  cluster <- pair_df$cluster[i]
+  gs <- pair_df$gene_set[i]
+
+  pseudo_clust <- pseudo_stats[pseudo_stats$cluster == glue("cluster_{cluster}"),]
+
+  ranks <- pseudo_clust %>%
+    dplyr::filter(percent_cells > 5) %>%
+    dplyr::arrange(desc(log_fc)) %>%
+    dplyr::select(feature, log_fc) %>%
+    deframe(.)
+
+  fgsea_res <- fgsea(pathways = sig_gene_list, stats = ranks, nperm = 10000)
+
+  annot <- annotations[[cluster]]
+
+  nes <- round(fgsea_res$NES[fgsea_res$pathway == gs], 3)
+  pval <- round(fgsea_res$pval[fgsea_res$pathway == gs], 3)
+  n_genes <- fgsea_res$size[fgsea_res$pathway == gs]
+
+  rnk <- rank(-ranks)
+  ord <- order(rnk)
+
+  statsAdj <- ranks[ord]
+  statsAdj <- sign(statsAdj) * (abs(statsAdj) ^ 1)
+  statsAdj <- statsAdj / max(abs(statsAdj))
+
+  pathway <- unname(as.vector(na.omit(match(sig_gene_list[[gs]], names(statsAdj)))))
+  pathway <- sort(pathway)
+
+  gseaRes <- calcGseaStat(statsAdj, selectedStats = pathway,
+                            returnAllExtremes = TRUE)
+
+  bottoms <- gseaRes$bottoms
+  tops <- gseaRes$tops
+
+  n <- length(statsAdj)
+  xs <- as.vector(rbind(pathway - 1, pathway))
+  ys <- as.vector(rbind(bottoms, tops))
+  toPlot <- data.frame(x=c(0, xs, n + 1), y=c(0, ys, 0))
+
+  diff <- (max(tops) - min(bottoms)) / 8
+
+  x=y=NULL
+
+  p <- ggplot(toPlot, aes(x = x, y = y)) +
+    # geom_point(color="blue", size=0.1) +
+    geom_line(color="blue") +
+    geom_hline(yintercept=0, colour="black") +
+    geom_segment(data=data.frame(x=pathway),
+                     mapping=aes(x=x, y=-0.15,
+                                 xend=x, yend=-0.25),
+                     size=0.4) +
+    scale_y_continuous(expand = c(0.05,0.05)) +
+    xlab("Rank") + ylab("Enrichment score") +
+    geom_text(aes(label = "")) +
+    annotate("text", label = glue("NES : {nes}"), x = length(ranks) - 1000, y  =0.9) +
+    annotate("text", label = glue("p-value : {pval}"), x = length(ranks) - 1000, y = 0.8) +
+    annotate("text", label = glue("# genes : {n_genes}"), x = length(ranks) - 1000, y = 0.7) +
+    ggtitle(glue("{gs} signature : {annot}")) +
+    theme_classic(base_size = 12)
+
+  # p <- plotEnrichment(sig_gene_list[[gs]], ranks) +
+  #   ggtitle(glue("{gs} signature : {annot}")) +
+  #   geom_text(aes(label = "")) +
+  #   annotate("text", label = glue("NES : {nes}"), x = length(ranks) - 1000, y  =1) +
+  #   annotate("text", label = glue("p-value : {pval}"), x = length(ranks) - 1000, y = 0.93) +
+  #   theme_classic()
+  plot_list <- c(plot_list, list(p))
+}
+
+plots <- ggarrange(plotlist = plot_list, ncol = 2, nrow = 2)
+plots
+```
+
+![](figure_4_files/figure-markdown_github/cano_gsea-1.png)
+
+We also used to GSEA to better understand the phenotype of our CD8 T cell clusters. Here we used Trm and Tem gene sets from Kumar et al. We see that CD8 T (GZMK) has a strong Tem phenotype, while CD8 T (CLIC3) and CD8 T (EGR2) have a Trm phenotype.
+
+``` r
+kumar_de_data <- read.csv("/home/nealpsmith/projects/medoff/data/kumar_lung_cd69_pos_vs_neg.csv")
+
+kumar_trm <- kumar_de_data %>%
+  dplyr::filter(logFC > 0, FDR < 0.05) %>%
+  .$Gene
+
+kumar_tem <- kumar_de_data %>%
+  dplyr::filter(logFC < 0, FDR < 0.05) %>%
+  .$Gene
+
+gsea_list <- list("kumar_trm" = kumar_trm, "kumar_tem" = kumar_tem)
+
+clusts_to_test <- c("1", "3", "5")
+
+plot_list <- list()
+for (sig in names(gsea_list)){
+  gene_set <- gsea_list[[sig]]
+
+
+  gs_list <- list(gene_set)
+  names(gs_list) <- sig
+
+  for (cluster in clusts_to_test){
+    pseudo_clust <- pseudo_stats[pseudo_stats$cluster == glue("cluster_{cluster}"),]
+
+    ranks <- pseudo_clust %>%
+      dplyr::filter(percent_cells > 5) %>%
+      dplyr::arrange(desc(log_fc)) %>%
+      dplyr::select(feature, log_fc) %>%
+      deframe(.)
+
+    fgsea_res <- fgsea(pathways = gs_list, stats = ranks, nperm = 10000)
+
+    annot <- annotations[[cluster]]
+
+    nes <- round(fgsea_res$NES[fgsea_res$pathway == sig], 3)
+    pval <- round(fgsea_res$pval[fgsea_res$pathway == sig], 3)
+    n_genes <- fgsea_res$size[fgsea_res$pathway == sig]
+
+    rnk <- rank(-ranks)
+    ord <- order(rnk)
+
+    statsAdj <- ranks[ord]
+    statsAdj <- sign(statsAdj) * (abs(statsAdj) ^ 1)
+    statsAdj <- statsAdj / max(abs(statsAdj))
+
+    pathway <- unname(as.vector(na.omit(match(gs_list[[sig]], names(statsAdj)))))
+    pathway <- sort(pathway)
+
+    gseaRes <- calcGseaStat(statsAdj, selectedStats = pathway,
+                              returnAllExtremes = TRUE)
+
+    bottoms <- gseaRes$bottoms
+    tops <- gseaRes$tops
+
+    n <- length(statsAdj)
+    xs <- as.vector(rbind(pathway - 1, pathway))
+    ys <- as.vector(rbind(bottoms, tops))
+    toPlot <- data.frame(x=c(0, xs, n + 1), y=c(0, ys, 0))
+
+    diff <- (max(tops) - min(bottoms)) / 8
+
+    x=y=NULL
+
+    p <- ggplot(toPlot, aes(x = x, y = y)) +
+      # geom_point(color="blue", size=0.1) +
+      geom_line(color="blue") +
+      geom_hline(yintercept=0, colour="black") +
+      geom_segment(data=data.frame(x=pathway),
+                       mapping=aes(x=x, y=-0.15,
+                                   xend=x, yend=-0.25),
+                       size=0.4) +
+      scale_y_continuous(expand = c(0.05,0.05)) +
+      xlab("Rank") + ylab("Enrichment score") +
+      geom_text(aes(label = "")) +
+      annotate("text", label = glue("NES : {nes}"), x = length(ranks) - 2000, y  =0.9) +
+      annotate("text", label = glue("p-value : {pval}"), x = length(ranks) - 2000, y = 0.8) +
+      annotate("text", label = glue("# genes : {n_genes}"), x = length(ranks) - 2000, y = 0.7) +
+      ggtitle(glue("{sig} signature : {annot}")) +
+      theme_classic(base_size = 12)
+
+    # ggsave(glue("/home/nealpsmith/projects/medoff/figures/gsea/{sig}/{annot}_{sig}.pdf"), p)
+    plot_list <- c(plot_list, list(p))
+
+  }
+}
+```
+
+    ## Warning in fgsea(pathways = gs_list, stats = ranks, nperm = 10000): You are
+    ## trying to run fgseaSimple. It is recommended to use fgseaMultilevel. To run
+    ## fgseaMultilevel, you need to remove the nperm argument in the fgsea function
+    ## call.
+
+    ## Warning in fgsea(pathways = gs_list, stats = ranks, nperm = 10000): You are
+    ## trying to run fgseaSimple. It is recommended to use fgseaMultilevel. To run
+    ## fgseaMultilevel, you need to remove the nperm argument in the fgsea function
+    ## call.
+
+    ## Warning in fgsea(pathways = gs_list, stats = ranks, nperm = 10000): You are
+    ## trying to run fgseaSimple. It is recommended to use fgseaMultilevel. To run
+    ## fgseaMultilevel, you need to remove the nperm argument in the fgsea function
+    ## call.
+
+    ## Warning in fgsea(pathways = gs_list, stats = ranks, nperm = 10000): You are
+    ## trying to run fgseaSimple. It is recommended to use fgseaMultilevel. To run
+    ## fgseaMultilevel, you need to remove the nperm argument in the fgsea function
+    ## call.
+
+    ## Warning in fgsea(pathways = gs_list, stats = ranks, nperm = 10000): You are
+    ## trying to run fgseaSimple. It is recommended to use fgseaMultilevel. To run
+    ## fgseaMultilevel, you need to remove the nperm argument in the fgsea function
+    ## call.
+
+    ## Warning in fgsea(pathways = gs_list, stats = ranks, nperm = 10000): You are
+    ## trying to run fgseaSimple. It is recommended to use fgseaMultilevel. To run
+    ## fgseaMultilevel, you need to remove the nperm argument in the fgsea function
+    ## call.
+
+``` r
+plots <- ggarrange(plotlist = plot_list, ncol = 3, nrow = 2)
+plots
+```
+
+![](figure_4_files/figure-markdown_github/gsea_trm_tem-1.png)
+
 # Differential abundance analysis
+
+We can look for abundance differences between groups and conditions. First, we used stacked bars to assess the amount of the total cells each T cell cluster represented in every sample.
+
+``` python
+
+cell_info = t_cell_harmonized.obs
+all_cell_info = pg.read_input("/home/nealpsmith/projects/medoff/data/anndata_for_publication/all_data_harmonized.h5ad")
+all_cell_info = all_cell_info.obs
+```
+
+<img src="figure_4_files/figure-markdown_github/get_cell_info-1.png" width="768" />
+
+``` r
+cols <- c('CD8 T (GZMK)'= '#e377c2',
+ 'quiesCD8 T '= '#2ca02c',
+ 'CD8 T (CLIC3)'= '#1f77b4',
+ 'Tgd (TRDC)'= '#9467bd',
+ 'CD8 T (EGR2)'= '#bcbd22',
+ 'CD4 Treg (FOXP3)'= '#8c564b',
+ 'CD4 Th2 (GATA3)'= '#7f7f7f',
+ 'CD4 ThIFNR (ISG15)'= '#17becf',
+ 'CD4 T (CD40LG)'= '#ff7f0e',
+ 'CD4 Th17 (RORA)'= '#d62728')
+
+all_cell_info <- reticulate::py$all_cell_info
+t_cell_info <- reticulate::py$cell_info
+
+
+cells_per_donor <- all_cell_info %>%
+  dplyr::select(id, sample, phenotype) %>%
+  group_by(id, sample, phenotype) %>%
+  summarise(n_total = n())
+```
+
+    ## `summarise()` has grouped output by 'id', 'sample'. You can override using the `.groups` argument.
+
+``` r
+# Need to fix old nomenclature
+cells_per_donor$sample <- as.character(cells_per_donor$sample)
+cells_per_donor$sample[cells_per_donor$sample == "Pre"] <- "Bln"
+cells_per_donor$phenotype <- as.character(cells_per_donor$phenotype)
+cells_per_donor$phenotype[cells_per_donor$phenotype == "ANA"] <- "AC"
+
+t_cell_counts <- t_cell_info %>%
+  dplyr::select(id, sample, annotation, phenotype) %>%
+  group_by(id, sample, annotation, phenotype) %>%
+  summarise(n_cells = n())
+```
+
+    ## `summarise()` has grouped output by 'id', 'sample', 'annotation'. You can override using the `.groups` argument.
+
+``` r
+plot_df <- t_cell_counts %>%
+  dplyr::left_join(cells_per_donor, by = c("id", "sample", "phenotype")) %>%
+  mutate(perc_cells = n_cells / n_total * 100)
+
+plot_df <- plot_df[plot_df$sample != "Dil",]
+plot_df$sample <- as.character(plot_df$sample)
+plot_df$sample[plot_df$sample == "Pre"] <- "Bln"
+plot_df$sample <- factor(plot_df$sample, levels = c("Bln", "Ag"))
+plot_df$annotation <- factor(plot_df$annotation)
+
+ggplot(plot_df, aes(x = sample, fill = annotation, y = perc_cells)) + geom_bar(stat = "identity") +
+  facet_grid(~id) +
+  ylab("percent") +
+  scale_fill_manual(values = cols) +
+  scale_y_continuous(limits = c(0, 60)) +
+  theme_classic(base_size = 20)
+```
+
+    ## Warning: Removed 1 rows containing missing values (geom_bar).
+
+![](figure_4_files/figure-markdown_github/stacked_bars-3.png)
+
+Below, we are looking at the distributions of percents and total number of T cells for our disease groups. The percents represent the percent of each T cell subcluster as a function of all T cells.
+
+``` r
+plot_df <- t_cell_counts %>%
+  group_by(id, sample) %>%
+  mutate(total_cells = sum(n_cells)) %>%
+  mutate(percent = n_cells / total_cells * 100)
+
+
+order <- plot_df %>%
+  group_by(annotation) %>%
+  summarise(n_total = sum(n_cells)) %>%
+  arrange(desc(n_total)) %>%
+  .$annotation
+
+plot_df$annotation <- factor(plot_df$annotation, levels = order)
+
+plot_df$sample <- as.character(plot_df$sample)
+plot_df <- plot_df[plot_df$sample != "Dil",]
+plot_df$sample <- factor(plot_df$sample, levels = c("Bln", "Ag"))
+plot_df$phenotype <- factor(plot_df$phenotype, levels = c("AC", "AA"))
+
+ggplot(plot_df, aes(x = annotation, y = percent, fill = phenotype)) +
+        geom_boxplot() +
+        scale_fill_manual(values = c("#40007F", "#FF8000")) +
+        scale_y_log10() +
+        annotation_logticks(side = "l") +
+        facet_wrap(~sample) +
+        ylab("Percent of T cells") +
+        xlab("cluster") +
+        theme_classic(base_size = 20) +
+        theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+```
+
+![](figure_4_files/figure-markdown_github/perc_boxplots-1.png)
+
+``` r
+ggplot(plot_df, aes(x = annotation, y = n_cells, fill = phenotype)) +
+        geom_boxplot() +
+        scale_fill_manual(values = c("#40007F", "#FF8000")) +
+        scale_y_log10() +
+        annotation_logticks(side = "l") +
+        facet_wrap(~sample) +
+        ylab("Number of T cells") +
+        xlab("cluster") +
+        theme_classic(base_size = 20) +
+        theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+```
+
+![](figure_4_files/figure-markdown_github/n_cells-1.png)
 
 To determine which clusters were associated with particular group at a given condition, we used a mixed-effects association logistic regression model similar to that described by Fonseka et al. We fit a logistic regression model for each cell cluster. Each cluster was modelled independently as follows : `cluster ~ 1 + condition:group + condition + group + (1 | id)`
 
 The least-squares means of the factors in the model were calculated and all pairwise contrasts between the means of the groups at each condition (e.g. AA vs AC within baseline, AA vs AC within allergen, etc.) were compared. The OR with confidence interval for each sample/condition combination were plotted.
-
-``` python
-cell_info = t_cell_harmonized.obs
-```
-
-<img src="figure_4_files/figure-markdown_github/cell_info-1.png" width="960" />
 
 ``` r
 library(lme4)
@@ -1387,66 +1944,6 @@ get_abund_info <- function(dataset, cluster, contrast, random_effects = NULL, fi
   return(cluster_models)
 }
 
-# A function to make a forest plot for the differential abundance analyses
-plot_contrasts <- function(d, x_breaks_by = 1, wrap_ncol = 6, y_ord = FALSE) {
-  # if (y_ord != FALSE){
-  #   d$cluster <- factor(d$cluster, levels = y_ord)
-  # }
-  ggplot() +
-    annotate(
-      geom = "rect",
-      xmin = -Inf,
-      xmax = Inf,
-      ymin = seq(from = 1, to = length(unique(d$cluster)), by = 2) - 0.5,
-      ymax = seq(from = 1, to = length(unique(d$cluster)), by = 2) + 0.5,
-      alpha = 0.2
-    ) +
-    geom_vline(xintercept = 0, size = 0.2) +
-    geom_errorbarh(
-      data = d,
-      mapping = aes(
-        xmin = asymp.LCL, xmax = asymp.UCL, y = cluster,
-        color = sig
-      ),
-      height = 0
-    ) +
-    geom_point(
-      data = d,
-      mapping = aes(
-        x = estimate, y = cluster,
-        color = sig
-      ),
-      size = 3
-    ) +
-    scale_color_manual(
-      name = "P < 0.05",
-      values = c("#FF8000", "#40007F", "grey60"),
-      breaks = c("AA", "ANA")
-    ) +
-    scale_x_continuous(
-      breaks = log(c(0.125, 0.5, 1, 2, 4)),
-      labels = function(x) exp(x)
-    ) +
-    scale_y_discrete(
-      # expand = c(0, 0),
-      # breaks = seq(1, length(unique(d$cluster))),
-      labels = levels(plot_df$cluster),
-    ) +
-    # annotation_logticks(sides = "b") +
-    expand_limits(y = c(0.5, length(unique(d$cluster)) + 0.5)) +
-    # facet_grid(~ GeneName) +
-    facet_wrap(~ sample, ncol = wrap_ncol) +
-    theme_classic() +
-    theme(
-      strip.text = element_text(face = "italic"),
-      text = element_text(size = 15)
-    ) +
-    labs(
-      title = "contrasts by sample",
-      x = "Odds Ratio",
-      y = "cluster"
-    )
-}
 
 clust_df <- reticulate::py$cell_info
 
@@ -1456,29 +1953,64 @@ abund_info <- get_abund_info(clust_df, cluster = clust_df$leiden_labels,
                             fixed_effects = c("sample", "phenotype"))
 
 plot_df <- do.call(rbind, abund_info)
-plot_df$direction <- ifelse(plot_df$estimate > 0, "AA", "ANA")
+plot_df$direction <- ifelse(plot_df$estimate > 0, "AA", "AC")
 
 
 plot_df$cluster <- as.numeric(gsub("cluster", "", plot_df$cluster))
 plot_df$sig <- ifelse(plot_df$p.value < 0.05, plot_df$direction, "non_sig")
-cl_order <- c(9, 7, 3, 1, 5, 6, 8, 10, 2, 4)
-plot_df$cluster <- factor(plot_df$cluster, levels = rev(cl_order))
-plot_df$sample <- factor(plot_df$sample, levels = c("Pre", "Dil", "Ag"))
-plot_contrasts(plot_df)
+
+# cl_order <- c(9, 7, 3, 1, 5, 6, 8, 10, 2, 4)
+# plot_df$cluster <- factor(plot_df$cluster, levels = rev(cl_order))
+plot_df$sample <- factor(plot_df$sample, levels = c("Bln", "Dil", "Ag"))
+plot_df <- plot_df[plot_df$sample != "Dil",]
+
+# Add annotation info
+annotations = c("1" = "CD8 T (GZMK)",
+                  "2" = "quiesCD8 T ",
+                  "3" = "CD8 T (CLIC3)",
+                  "4" = "Tgd (TRDC)",
+                  "5" = "CD8 T (EGR2)",
+                  "6" = "CD4 Treg (FOXP3)",
+                  "7" = "CD4 Th2 (GATA3)",
+                  "8" = "CD4 ThIFNR (ISG15)",
+                  "9" = "CD4 T (CD40LG)",
+                  "10" = "CD4 Th17 (RORA)")
+
+plot_df$annotation <- sapply(plot_df$cluster, function(x) annotations[as.character(x)])
+plot_df$annotation <- factor(plot_df$annotation, levels = rev(unlist(annotations, use.names = FALSE)))
+
+ggplot(plot_df[plot_df$sample != "Dil",], aes(x = estimate, y = annotation, color = sig)) +
+  geom_point(size = 3) +
+  geom_errorbarh(mapping = aes(xmin = asymp.LCL, xmax = asymp.UCL, y = annotation, color = sig),
+                 height = 0) +
+  geom_vline(xintercept = 0, size = 0.2) +
+  scale_color_manual(
+      name = "P < 0.05",
+      values = c("#FF8000", "#40007F", "grey60"),
+      breaks = c("AA", "AC")
+    ) +
+    scale_x_continuous(
+      breaks = log(c(0.125, 0.5, 1, 2, 4)),
+      labels = function(x) exp(x)
+    ) +
+    # scale_y_discrete(labels = levels(plot_df$cluster)) +
+  xlab("Odds Ratio") +
+  facet_wrap(~sample) +
+  theme_classic(base_size = 20)
 ```
 
-![](figure_4_files/figure-markdown_github/diff_abund-3.png)
+![](figure_4_files/figure-markdown_github/diff_abund-1.png)
 
 The most noticable thing in terms of differences between AA and AC are the Th2 cells. Even more interestingly, the IL9 expression in the Th2 cells is almost exclusively in the AA as shown below.
 
 ``` python
 
 cmap_dict = {"AA" : clr.LinearSegmentedColormap.from_list('gene_cmap', ["#d3d3d3" ,'#FF8000'], N=200),
-             "ANA" : clr.LinearSegmentedColormap.from_list('gene_cmap', ["#d3d3d3" ,'#40007F'], N=200)}
+             "AC" : clr.LinearSegmentedColormap.from_list('gene_cmap', ["#d3d3d3" ,'#40007F'], N=200)}
 
 il9_fig, ax = plt.subplots(nrows = 1, ncols = 2, figsize = (10, 3))
 ax = ax.ravel()
-for num, pheno in enumerate(["AA", "ANA"]) :
+for num, pheno in enumerate(["AA", "AC"]) :
     pheno_dat = t_cell_harmonized[t_cell_harmonized.obs["phenotype"] == pheno]
     _ = sc.pl.umap(pheno_dat, color = "IL9", cmap = cmap_dict[pheno], show = False, ax = ax[num],
                title = pheno)
@@ -1513,12 +2045,14 @@ fig
 Next, we wanted to know which genes were differentially expressed between AA and AC at Ag. For this, we used `DESeq2` on the pseudobulk count matrix. We used a simple model of `gene ~ phenotype` where phenotype was a factor with 2 levels indicating the phenotypical group the sample came from. There were not too many significant genes, however the ones that came out were interesting. For example, in the Th2 cells, we see IL2RA and CTLA4 were up-regulated in the AA. All significant genes we found were up-regulated in the AA.
 
 ``` r
-library(DESeq2)
 library(glue)
 
 count_mtx <- as.matrix(read.csv("/home/nealpsmith/projects/medoff/data/pseudobulk_t_cell_harmonized_counts.csv", row.names = 1))
 meta_data <- read.csv("/home/nealpsmith/projects/medoff/data/pseudobulk_t_cell_harmonized_meta.csv", row.names = 1)
-meta_data$phenotype <- factor(meta_data$phenotype, levels = c("ANA", "AA"))
+
+meta_data$phenotype <- as.character(meta_data$phenotype)
+meta_data$phenotype[meta_data$phenotype == "ANA"] <- "AC"
+meta_data$phenotype <- factor(meta_data$phenotype, levels = c("AC", "AA"))
 
 # Limit to just Ag samples
 meta_data <- meta_data[meta_data$sample == "Ag",]
@@ -1560,16 +2094,34 @@ aa_up <- lapply(names(de_list), function(x){
   }) %>%
     do.call(rbind, .)
 
+# Remove the "clust" prefix to add annotations
+aa_up$cluster <- sapply(aa_up$cluster, function(x) sub("clust_", "", x))
+
+# Add the annotations (we used old cluster assignments here, that is why they are different than other sections)
+old_annotations <- c("7" = "CD8 T (GZMK)",
+                     "3" = "quiesCD8 T ",
+                     "1" = "CD8 T (CLIC3)",
+                     "5" = "Tgd (TRDC)",
+                     "9" = "CD8 T (EGR2)",
+                     "6" = "CD4 Treg (FOXP3)",
+                     "8" = "CD4 Th2 (GATA3)",
+                     "10" = "CD4 ThIFNR (ISG15)",
+                     "2" = "CD4 T (CD40LG)",
+                     "4" = "CD4 Th17 (RORA)")
+
+aa_up$annotation <- sapply(aa_up$cluster, function(x) old_annotations[as.character(x)])
+aa_up <- aa_up[,c("gene", "annotation")]
+
 aa_up
 ```
 
-    ##    gene cluster
-    ## 1 CTLA4 clust_8
-    ## 2 IL2RA clust_8
-    ## 3   MAL clust_2
-    ## 4  GZMB clust_5
-    ## 5  CCR7 clust_3
-    ## 6 SOCS3 clust_3
+    ##    gene      annotation
+    ## 1 CTLA4 CD4 Th2 (GATA3)
+    ## 2 IL2RA CD4 Th2 (GATA3)
+    ## 3   MAL  CD4 T (CD40LG)
+    ## 4  GZMB      Tgd (TRDC)
+    ## 5  CCR7     quiesCD8 T 
+    ## 6 SOCS3     quiesCD8 T
 
 To visualize these, we used violin plots comparing the AA and AC expression distributions in the particular clusters
 
@@ -1577,7 +2129,7 @@ To visualize these, we used violin plots comparing the AA and AC expression dist
 t_cell_ag = t_cell_harmonized[t_cell_harmonized.obs["sample"] == "Ag"]
 
 plot_info = pd.DataFrame({"gene" : ["IL2RA", "CTLA4", "MAL", "GZMB", "CCR7", "SOCS3"],
-                          "clust" : ["8", "8", "2", "5", "3", "3"]})
+                          "clust" : ["7", "7", "9", "4", "2", "2"]})
 
 fig, ax = plt.subplots(ncols=plot_info.shape[0], figsize = (12, 2))
 ax = ax.ravel()
@@ -1593,15 +2145,15 @@ for num, indx in enumerate(plot_info.index.values) :
 
     # Get medians
     medians = [np.median(t_cell_gene_data[t_cell_gene_data["phenotype"] == "AA"][gene]),
-               np.median(t_cell_gene_data[t_cell_gene_data["phenotype"] == "ANA"][gene])]
+               np.median(t_cell_gene_data[t_cell_gene_data["phenotype"] == "AC"][gene])]
 
     # Make the plot
     sns.violinplot(x="phenotype", y=gene, hue="phenotype", data=t_cell_gene_data, inner=None,
-                   palette={"AA": "#FF8000", "ANA": "#40007F"}, ax=ax[num], cut=0, alpha=0.5, dodge = False)
+                   palette={"AA": "#FF8000", "AC": "#40007F"}, ax=ax[num], cut=0, alpha=0.5, dodge = False)
     for violin in ax[num].collections:
         violin.set_alpha(0.5)
     sns.stripplot(x="phenotype", y=gene, hue="phenotype", data=t_cell_gene_data,
-                  palette={"AA": "grey", "ANA": "grey"},
+                  palette={"AA": "grey", "AC": "grey"},
                   dodge=False, size=2, ax=ax[num], zorder=0)
     # ax[num].scatter(x = [0, 1], y = medians, marker = "_", s = 600, c = "black")
     _ = ax[num].get_legend().remove()
@@ -1614,3 +2166,93 @@ fig
 ```
 
 <img src="figure_4_files/figure-markdown_github/de_violins-1.png" width="1152" />
+
+We were also curious about the differences between the baseline and allergen timepoints. We used a simple model of gene ~ sample where sample was a factor with 2 levels (Bln, Ag) indicating which condition the sample was from. When we compare the number of DEGs from Bln:Ag between AA and AC, we see that AA has significantly more.
+
+``` r
+count_mtx <- as.matrix(read.csv(
+  "/home/nealpsmith/projects/medoff/data/pseudobulk_t_cell_harmonized_counts.csv",
+  row.names = 1))
+meta_data <- read.csv("/home/nealpsmith/projects/medoff/data/pseudobulk_t_cell_harmonized_meta.csv",
+                      row.names = 1)
+
+meta_data$phenotype <- as.character(meta_data$phenotype)
+meta_data$phenotype[meta_data$phenotype == "ANA"] <- "AC"
+meta_data$phenotype <- factor(meta_data$phenotype, levels = c("AC", "AA"))
+
+meta_data$sample <- as.character(meta_data$sample)
+meta_data$sample[meta_data$sample == "Pre"] <- "Bln"
+
+de_list <- list()
+for (clust in unique(meta_data$cluster)){
+  clust_meta <-meta_data[meta_data$cluster == clust,]
+  clust_count <- count_mtx[,rownames(clust_meta)]
+
+  # Lets do a comparison of groups at Pre and Ag
+  pheno_list <- list()
+  for (pheno in c("AA", "AC")){
+
+    # Get just the samples from that phenotype and only pre and Ag
+    meta_temp <- clust_meta[clust_meta$phenotype ==pheno & clust_meta$sample %in% c("Bln", "Ag"),]
+    meta_temp$sample <- factor(meta_temp$sample, levels = c("Bln", "Ag"))
+
+    if(nrow(meta_temp) > 5){
+      count_temp <- clust_count[,rownames(meta_temp)]
+
+      n_samp <- rowSums(count_temp != 0)
+      count_temp <- count_temp[n_samp > round(nrow(meta_temp) / 2),]
+
+      stopifnot(rownames(meta_temp) == colnames(count_temp))
+      dds <- DESeqDataSetFromMatrix(countData = count_temp,
+                                    colData = meta_temp,
+                                    design = ~sample)
+
+      dds <- DESeq(dds)
+      res <- results(dds)
+      plot_data <- as.data.frame(res)
+      plot_data <- plot_data[!is.na(plot_data$padj),]
+      plot_data$gene <- rownames(plot_data)
+      n_de <- nrow(plot_data[plot_data$padj < 0.1,])
+      pheno_list[[pheno]] <- n_de
+    } else {
+      pheno_list[[pheno]] <- 0
+    }
+
+  }
+  df <- as.data.frame(pheno_list)
+  df$leiden_labels <- clust
+  de_list[[clust]] <- df
+
+}
+
+de_counts <- do.call(rbind, de_list)
+de_counts <- de_counts[order(rowSums(de_counts), decreasing = FALSE),]
+
+de_counts$leiden_labels <- factor(rownames(de_counts), levels = rownames(de_counts))
+plot_df <- reshape2::melt(de_counts, id.vars = "leiden_labels") %>%
+  mutate(value = ifelse(variable == "AC", -value, value))
+
+# Add the annotations (we used old cluster assignments here, that is why they are different than other sections)
+old_annotations <- c("7" = "CD8 T (GZMK)",
+                     "3" = "quiesCD8 T ",
+                     "1" = "CD8 T (CLIC3)",
+                     "5" = "Tgd (TRDC)",
+                     "9" = "CD8 T (EGR2)",
+                     "6" = "CD4 Treg (FOXP3)",
+                     "8" = "CD4 Th2 (GATA3)",
+                     "10" = "CD4 ThIFNR (ISG15)",
+                     "2" = "CD4 T (CD40LG)",
+                     "4" = "CD4 Th17 (RORA)")
+
+plot_df$annotation <- sapply(plot_df$leiden_labels, function(x) old_annotations[as.character(x)])
+
+ggplot(plot_df, aes(x = annotation, y = value, group = variable, fill = variable)) +
+  geom_bar(stat = "identity") + coord_flip() +
+  scale_fill_manual(values = c("#FF8000", "#40007F")) +
+  scale_y_continuous(labels = abs) +
+  ggtitle(glue("Number of DE genes Bln vs. Ag")) +
+  ylab("# of DE genes") + xlab("") +
+  theme_classic(base_size = 18)
+```
+
+![](figure_4_files/figure-markdown_github/pre_vs_ag-3.png)

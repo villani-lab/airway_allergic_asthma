@@ -1,6 +1,6 @@
 ---
 title: "Figure 4"
-output: html_document
+output: rmarkdown::github_document
 ---
 
 ```{r message=FALSE}
@@ -11,7 +11,7 @@ use_python("/home/nealpsmith/.conda/envs/sc_analysis/bin/python")
 
 **For figure 4, we wanted to focus in on the T cells.  We subsetted our main data object to just the T cell clusters.
 From there we had a few goals : Find heterogeneity among the T cells, determine which T cell clusters are enriched in
-AA and ANA and look for DEGs among the T cells.**
+AA and AC and look for DEGs among the T cells.**
 
 First, we isolated just the T cells from our original data object.  NK cells were segregated and removed.  Next, we
 wanted to determine the optimal number of clusters for our T cells.
@@ -102,20 +102,20 @@ t_cell_harmonized = pg.read_input("/home/nealpsmith/projects/medoff/data/anndata
 # plot_df.to_csv(os.path.join(file_path(), "data", "ari_plots", "t_cell_harmonized_ARI.csv"))
 
 
-# plot_df = pd.read_csv("/home/nealpsmith/projects/medoff/data/ari_plots/t_cell_harmonized_ARI.csv")
-# fig, ax = plt.subplots(1)
-# _ = sns.boxplot(x="index", y="value", data=plot_df, ax = ax)
-# for box in ax.artists:
-#     box.set_facecolor("grey")
+plot_df = pd.read_csv("/home/nealpsmith/projects/medoff/data/ari_plots/t_cell_harmonized_ARI.csv")
+fig, ax = plt.subplots(1)
+_ = sns.boxplot(x="index", y="value", data=plot_df, ax = ax)
+for box in ax.artists:
+    box.set_facecolor("grey")
 # ax.artists[5].set_facecolor("red") # The one we chose!
-# ax.spines['right'].set_visible(False)
-# ax.spines['top'].set_visible(False)
-# ax.tick_params(axis='both', which='major', labelsize=15)
-# _ = ax.set_ylabel("Adjusted Rand index", size = 20)
-# _ = ax.set_xlabel("leiden resolution", size = 20)
-# _ = plt.axhline(y = 0.9, color = "black", linestyle = "--")
-# fig.tight_layout()
-# fig
+ax.spines['right'].set_visible(False)
+ax.spines['top'].set_visible(False)
+ax.tick_params(axis='both', which='major', labelsize=15)
+_ = ax.set_ylabel("Adjusted Rand index", size = 20)
+_ = ax.set_xlabel("leiden resolution", size = 20)
+_ = plt.axhline(y = 0.9, color = "black", linestyle = "--")
+fig.tight_layout()
+fig
 ```
 
 Based on this rand index approach, we can see that a leiden resolution of 1.3 is the highest resolution where the
@@ -229,42 +229,42 @@ for name in names :
 de_res = de_res.to_records(index=False)
 t_cell_harmonized.varm["de_res"] = de_res
 
-# top_genes = {}
-# for clust in sorted(set(t_cell_harmonized.obs["leiden_labels"]), key = int) :
-#     df_dict = {"auc": t_cell_harmonized.varm["de_res"]["auroc:{clust}".format(clust=clust)],
-#                "pseudo_q" : t_cell_harmonized.varm["de_res"]["pseudobulk_q_val:{clust}".format(clust = clust)],
-#                "pseudo_p" : t_cell_harmonized.varm["de_res"]["pseudobulk_p_val:{clust}".format(clust = clust)],
-#                "pseudo_log_fc" : t_cell_harmonized.varm["de_res"]["pseudobulk_log_fold_change:{clust}".format(clust = clust)],
-#                "percent" : t_cell_harmonized.varm["de_res"]["percentage:{clust}".format(clust = clust)]}
-#     df = pd.DataFrame(df_dict, index=t_cell_harmonized.var.index)
-#     # Lets limit to genes where at least 20% cells express it
-#     df = df[df["percent"] > 20]
-#     # df = df.sort_values(by=["auc"], ascending=False)
-#     # df = df.iloc[0:15]
-#     # genes = df.index.values
-#     # Get top 50 genes (first by AUC, then by pseudobulk)
-#     genes = df[df["auc"] >= 0.75].index.values
-#
-#     n_from_pseudo = 50 - len(genes)
-#     if n_from_pseudo > 0 :
-#         # Dont want to repeat genes
-#         pseudobulk = df.drop(genes)
-#         pseudobulk = pseudobulk[(pseudobulk["pseudo_q"] < 0.05)]
-#         pseudobulk = pseudobulk.sort_values(by = "pseudo_log_fc", ascending = False).iloc[0:n_from_pseudo,:].index.values
-#         pseudobulk = [name for name in pseudobulk if name not in genes]
-#         genes = np.concatenate((genes, pseudobulk))
-#
-#     print("Cluster {clust}: {length}".format(clust = clust, length = len(genes)))
-#     top_genes[clust] = genes
-#
-# top_gene_df = pd.DataFrame(dict([(k,pd.Series(v)) for k,v in top_genes.items() ]))
-# top_gene_df = top_gene_df.rename(columns = {clust : "cluster_{clust}".format(clust=clust) for clust in top_genes.keys()})
-# top_gene_df = top_gene_df.replace(np.nan, "")
+top_genes = {}
+for clust in sorted(set(t_cell_harmonized.obs["leiden_labels"]), key = int) :
+    df_dict = {"auc": t_cell_harmonized.varm["de_res"]["auroc:{clust}".format(clust=clust)],
+               "pseudo_q" : t_cell_harmonized.varm["de_res"]["pseudobulk_q_val:{clust}".format(clust = clust)],
+               "pseudo_p" : t_cell_harmonized.varm["de_res"]["pseudobulk_p_val:{clust}".format(clust = clust)],
+               "pseudo_log_fc" : t_cell_harmonized.varm["de_res"]["pseudobulk_log_fold_change:{clust}".format(clust = clust)],
+               "percent" : t_cell_harmonized.varm["de_res"]["percentage:{clust}".format(clust = clust)]}
+    df = pd.DataFrame(df_dict, index=t_cell_harmonized.var.index)
+    # Lets limit to genes where at least 20% cells express it
+    df = df[df["percent"] > 20]
+    # df = df.sort_values(by=["auc"], ascending=False)
+    # df = df.iloc[0:15]
+    # genes = df.index.values
+    # Get top 50 genes (first by AUC, then by pseudobulk)
+    genes = df[df["auc"] >= 0.75].index.values
+
+    n_from_pseudo = 50 - len(genes)
+    if n_from_pseudo > 0 :
+        # Dont want to repeat genes
+        pseudobulk = df.drop(genes)
+        pseudobulk = pseudobulk[(pseudobulk["pseudo_q"] < 0.05)]
+        pseudobulk = pseudobulk.sort_values(by = "pseudo_log_fc", ascending = False).iloc[0:n_from_pseudo,:].index.values
+        pseudobulk = [name for name in pseudobulk if name not in genes]
+        genes = np.concatenate((genes, pseudobulk))
+
+    print("Cluster {clust}: {length}".format(clust = clust, length = len(genes)))
+    top_genes[clust] = genes
+
+top_gene_df = pd.DataFrame(dict([(k,pd.Series(v)) for k,v in top_genes.items() ]))
+top_gene_df = top_gene_df.rename(columns = {clust : "cluster_{clust}".format(clust=clust) for clust in top_genes.keys()})
+top_gene_df = top_gene_df.replace(np.nan, "")
 
 ```
 
 ```{r, show_auc_and_pseudo}
-# kable(reticulate::py$top_gene_df, caption = "genes with AUC> 0.75 or pseudo q < 0.05")
+kable(reticulate::py$top_gene_df, caption = "genes with AUC> 0.75 or pseudo q < 0.05")
 ```
 
 Now with the AUROC and OVA marker genes, we can visualize the markers with a heatmap.  First, we looked at the data with
@@ -273,86 +273,86 @@ a heatmap where both the rows and columns were clustered.
 ```{python heatmap1}
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 import matplotlib as mpl
-# heatmap_genes = []
-# repeated_genes = [] # Get genes that are not unique, do not want to annotate them
-# for key in top_genes.keys() :
-#     for gene in top_genes[key] :
-#         if gene not in heatmap_genes :
-#             heatmap_genes.append(gene)
-#         else :
-#             repeated_genes.append(gene)
-#
-# # Get the genes for annotation: top markers that are not in repeated genes
-# annot_genes = {}
-# for clust in top_genes.keys() :
-#     non_rep_genes = [gene for gene in top_genes[clust] if gene not in repeated_genes and not gene.startswith("RP")]
-#     annot_genes[clust] = non_rep_genes
-#
-# # Write out the annotation genes for the heatmap (making with ComplexHeatmap)
-# annot_genes = pd.DataFrame(dict([ (k,pd.Series(v)) for k,v in annot_genes.items() ]))
-# annot_genes = annot_genes.rename(columns = {clust : "cluster_{clust}".format(clust=clust) for clust in annot_genes.columns})
-# # Lets add the colors for each cluster from the UMAP
-# clust_cols = dict(zip(sorted(set(t_cell_harmonized.obs["leiden_labels"]), key = int),
-#                       t_cell_harmonized.uns["leiden_labels_colors"]))
-# clust_cols = pd.DataFrame(clust_cols,
-#                           index = ["col"]).rename(columns = dict(zip(clust_cols.keys(),
-#                                                                      ["cluster_{clust}".format(clust = clust) for clust
-#                                                                       in clust_cols.keys()])))
-#
-# annot_genes = annot_genes.append(clust_cols)
-#
-# # Also need to add mean gene counts
-# # Get the mean gene counts for sidebar
-# gene_val_list = []
-# gene_val_dict = {}
-# for clust in sorted(set(t_cell_harmonized.obs["leiden_labels"]), key = int) :
-#     gene_vals = t_cell_harmonized.obs["n_genes"][t_cell_harmonized.obs["leiden_labels"] == clust]
-#
-#     mean = np.mean(gene_vals)
-#     gene_val_list.append(mean)
-#     gene_val_dict[clust] = mean
-#
-# # Append these mean gene counts to the dataframe
-# annot_genes = annot_genes.append(pd.DataFrame(gene_val_dict,
-#                           index = ["mean_genes"]).rename(columns = dict(zip(gene_val_dict.keys(),
-#                                                                      ["cluster_{clust}".format(clust = clust) for clust
-#                                                                       in gene_val_dict.keys()]))))
-#
-#
-# # Get the mean expression of the top genes from each cluster
-# de_df = {"mean_log_{clust}".format(clust = clust) : t_cell_harmonized.varm["de_res"]["mean_logExpr:{clust}".format(clust = clust)] for clust in sorted(set(t_cell_harmonized.obs["leiden_labels"]), key = int)}
-# de_df = pd.DataFrame(de_df, index = t_cell_harmonized.var.index)
-#
-# heatmap_df = de_df.loc[heatmap_genes]
-#
-#
-# colors = sns.color_palette("ch:2.5,-.2,dark=.2", n_colors = len(gene_val_list)).as_hex()
-# # Put the gene values in order lowest to highest
-# sorted_cols = sorted(gene_val_list)
-#
-# fig, ax = plt.subplots(1, 1, figsize = (10, 10))
-# divider = make_axes_locatable(ax)
-# axDivY = divider.append_axes( 'right', size=0.2, pad= 0.1)
-# axDivY2 = divider.append_axes( 'right', size=0.2, pad= 0.2)
-# axDivY3 = divider.append_axes( 'right', size=0.2, pad= 0.2)
-# axDivY4 = divider.append_axes( 'top', size=0.2, pad= 0.2)
-#
-# ax1 = sns.clustermap(heatmap_df, method = "ward", row_cluster =True, col_cluster =True, z_score = 0, cmap = "vlag")
-# col_order = np.array([name.split("_")[-1] for name in ax1.data2d.columns])
-# index = [sorted_cols.index(gene_val_dict[clust]) for clust in col_order]
-# plt.close()
-# ax1 = sns.heatmap(ax1.data2d, cmap = "vlag", ax = ax, cbar_ax = axDivY)
-# ax2 = axDivY2.imshow(np.array([[min(gene_val_list), max(gene_val_list)]]), cmap = mpl.colors.ListedColormap(list(colors)),
-#                      interpolation = "nearest", aspect = "auto")
-# axDivY2.set_axis_off()
-# axDivY2.set_visible(False)
-# _ = plt.colorbar(ax2, cax = axDivY3)
-# _ = axDivY3.set_title("n_genes")
-# ax3 = axDivY4.imshow(np.array([index]),cmap=mpl.colors.ListedColormap(list(colors)),
-#               interpolation="nearest", aspect="auto")
-# axDivY4.set_axis_off()
-# _ = plt.title("top genes for every cluster")
-# plt.show()
+heatmap_genes = []
+repeated_genes = [] # Get genes that are not unique, do not want to annotate them
+for key in top_genes.keys() :
+    for gene in top_genes[key] :
+        if gene not in heatmap_genes :
+            heatmap_genes.append(gene)
+        else :
+            repeated_genes.append(gene)
+
+# Get the genes for annotation: top markers that are not in repeated genes
+annot_genes = {}
+for clust in top_genes.keys() :
+    non_rep_genes = [gene for gene in top_genes[clust] if gene not in repeated_genes and not gene.startswith("RP")]
+    annot_genes[clust] = non_rep_genes
+
+# Write out the annotation genes for the heatmap (making with ComplexHeatmap)
+annot_genes = pd.DataFrame(dict([ (k,pd.Series(v)) for k,v in annot_genes.items() ]))
+annot_genes = annot_genes.rename(columns = {clust : "cluster_{clust}".format(clust=clust) for clust in annot_genes.columns})
+# Lets add the colors for each cluster from the UMAP
+clust_cols = dict(zip(sorted(set(t_cell_harmonized.obs["leiden_labels"]), key = int),
+                      t_cell_harmonized.uns["leiden_labels_colors"]))
+clust_cols = pd.DataFrame(clust_cols,
+                          index = ["col"]).rename(columns = dict(zip(clust_cols.keys(),
+                                                                     ["cluster_{clust}".format(clust = clust) for clust
+                                                                      in clust_cols.keys()])))
+
+annot_genes = annot_genes.append(clust_cols)
+
+# Also need to add mean gene counts
+# Get the mean gene counts for sidebar
+gene_val_list = []
+gene_val_dict = {}
+for clust in sorted(set(t_cell_harmonized.obs["leiden_labels"]), key = int) :
+    gene_vals = t_cell_harmonized.obs["n_genes"][t_cell_harmonized.obs["leiden_labels"] == clust]
+
+    mean = np.mean(gene_vals)
+    gene_val_list.append(mean)
+    gene_val_dict[clust] = mean
+
+# Append these mean gene counts to the dataframe
+annot_genes = annot_genes.append(pd.DataFrame(gene_val_dict,
+                          index = ["mean_genes"]).rename(columns = dict(zip(gene_val_dict.keys(),
+                                                                     ["cluster_{clust}".format(clust = clust) for clust
+                                                                      in gene_val_dict.keys()]))))
+
+
+# Get the mean expression of the top genes from each cluster
+de_df = {"mean_log_{clust}".format(clust = clust) : t_cell_harmonized.varm["de_res"]["mean_logExpr:{clust}".format(clust = clust)] for clust in sorted(set(t_cell_harmonized.obs["leiden_labels"]), key = int)}
+de_df = pd.DataFrame(de_df, index = t_cell_harmonized.var.index)
+
+heatmap_df = de_df.loc[heatmap_genes]
+
+
+colors = sns.color_palette("ch:2.5,-.2,dark=.2", n_colors = len(gene_val_list)).as_hex()
+# Put the gene values in order lowest to highest
+sorted_cols = sorted(gene_val_list)
+
+fig, ax = plt.subplots(1, 1, figsize = (10, 10))
+divider = make_axes_locatable(ax)
+axDivY = divider.append_axes( 'right', size=0.2, pad= 0.1)
+axDivY2 = divider.append_axes( 'right', size=0.2, pad= 0.2)
+axDivY3 = divider.append_axes( 'right', size=0.2, pad= 0.2)
+axDivY4 = divider.append_axes( 'top', size=0.2, pad= 0.2)
+
+ax1 = sns.clustermap(heatmap_df, method = "ward", row_cluster =True, col_cluster =True, z_score = 0, cmap = "vlag")
+col_order = np.array([name.split("_")[-1] for name in ax1.data2d.columns])
+index = [sorted_cols.index(gene_val_dict[clust]) for clust in col_order]
+plt.close()
+ax1 = sns.heatmap(ax1.data2d, cmap = "vlag", ax = ax, cbar_ax = axDivY)
+ax2 = axDivY2.imshow(np.array([[min(gene_val_list), max(gene_val_list)]]), cmap = mpl.colors.ListedColormap(list(colors)),
+                     interpolation = "nearest", aspect = "auto")
+axDivY2.set_axis_off()
+axDivY2.set_visible(False)
+_ = plt.colorbar(ax2, cax = axDivY3)
+_ = axDivY3.set_title("n_genes")
+ax3 = axDivY4.imshow(np.array([index]),cmap=mpl.colors.ListedColormap(list(colors)),
+              interpolation="nearest", aspect="auto")
+axDivY4.set_axis_off()
+_ = plt.title("top genes for every cluster")
+plt.show()
 
 ```
 
@@ -361,72 +361,72 @@ similar clusters were grouped together, but manually ordered the rows.
 
 
 ```{python ordered_heatmap}
-# n_heatmap_genes = {}
-# heatmap_genes = []
-# for key in col_order :
-#     cnt = 0
-#     for gene in top_genes[key] :
-#         if gene not in heatmap_genes :
-#             heatmap_genes.append(gene)
-#             cnt+=1
-#     n_heatmap_genes[key] = cnt
-#
-# n_heatmap_genes = pd.DataFrame(n_heatmap_genes, index = ["n_genes"]).rename(columns = dict(zip(n_heatmap_genes.keys(),
-#                                                                                                ["cluster_{clust}".format(clust = clust) for
-#                                                                                                 clust in n_heatmap_genes.keys()])))
-# # Add number of genes in the heatmap for each clusters
-# annot_genes = annot_genes.append(n_heatmap_genes)
-# annot_genes = annot_genes.reset_index()
-# annot_genes = annot_genes.fillna('')
-#
-#
-# # Get the mean expression of the top genes from each cluster
-# de_df = {"mean_log_{clust}".format(clust = clust) : t_cell_harmonized.varm["de_res"]["mean_logExpr:{clust}".format(clust = clust)] for clust in sorted(set(t_cell_harmonized.obs["leiden_labels"]), key = int)}
-# de_df = pd.DataFrame(de_df, index = t_cell_harmonized.var.index)
-#
-# heatmap_df = de_df.loc[heatmap_genes]
-#
-# # Get the mean gene counts for sidebar
-# gene_val_list = []
-# gene_val_dict = {}
-# for clust in sorted(set(t_cell_harmonized.obs["leiden_labels"]), key = int) :
-#     gene_vals = t_cell_harmonized.obs["n_genes"][t_cell_harmonized.obs["leiden_labels"] == clust]
-#
-#     mean = np.mean(gene_vals)
-#     gene_val_list.append(mean)
-#     gene_val_dict[clust] = mean
-#
-# colors = sns.color_palette("ch:2.5,-.2,dark=.2", n_colors = len(gene_val_list)).as_hex()
-# # Put the gene values in order lowest to highest
-# sorted_cols = sorted(gene_val_list)
-#
-# fig, ax = plt.subplots(1, 1, figsize = (10, 10))
-# divider = make_axes_locatable(ax)
-# axDivY = divider.append_axes( 'right', size=0.2, pad= 0.1)
-# axDivY2 = divider.append_axes( 'right', size=0.2, pad= 0.2)
-# axDivY3 = divider.append_axes( 'right', size=0.2, pad= 0.2)
-# axDivY4 = divider.append_axes( 'top', size=0.2, pad= 0.2)
-#
-# # color_label_list =[random.randint(0,14) for i in range(14)]
-# ax1 = sns.clustermap(heatmap_df, method = "ward", row_cluster =False, col_cluster =True, z_score = 0, cmap = "vlag")
-# col_order = np.array([name.split("_")[-1] for name in ax1.data2d.columns])
-# index = [sorted_cols.index(gene_val_dict[clust]) for clust in col_order]
-# plt.close()
-#
-# heatmap_carpet = ax1.data2d
-#
-# ax1 = sns.heatmap(ax1.data2d, cmap = "vlag", ax = ax, cbar_ax = axDivY)
-# ax2 = axDivY2.imshow(np.array([[min(gene_val_list), max(gene_val_list)]]), cmap = mpl.colors.ListedColormap(list(colors)),
-#                      interpolation = "nearest", aspect = "auto")
-# axDivY2.set_axis_off()
-# axDivY2.set_visible(False)
-# _ = plt.colorbar(ax2, cax = axDivY3)
-# _ = axDivY3.set_title("n_genes")
-# ax3 = axDivY4.imshow(np.array([index]),cmap=mpl.colors.ListedColormap(list(colors)),
-#               interpolation="nearest", aspect="auto")
-# axDivY4.set_axis_off()
-# _ = plt.title("top genes for every cluster")
-# plt.show()
+n_heatmap_genes = {}
+heatmap_genes = []
+for key in col_order :
+    cnt = 0
+    for gene in top_genes[key] :
+        if gene not in heatmap_genes :
+            heatmap_genes.append(gene)
+            cnt+=1
+    n_heatmap_genes[key] = cnt
+
+n_heatmap_genes = pd.DataFrame(n_heatmap_genes, index = ["n_genes"]).rename(columns = dict(zip(n_heatmap_genes.keys(),
+                                                                                               ["cluster_{clust}".format(clust = clust) for
+                                                                                                clust in n_heatmap_genes.keys()])))
+# Add number of genes in the heatmap for each clusters
+annot_genes = annot_genes.append(n_heatmap_genes)
+annot_genes = annot_genes.reset_index()
+annot_genes = annot_genes.fillna('')
+
+
+# Get the mean expression of the top genes from each cluster
+de_df = {"mean_log_{clust}".format(clust = clust) : t_cell_harmonized.varm["de_res"]["mean_logExpr:{clust}".format(clust = clust)] for clust in sorted(set(t_cell_harmonized.obs["leiden_labels"]), key = int)}
+de_df = pd.DataFrame(de_df, index = t_cell_harmonized.var.index)
+
+heatmap_df = de_df.loc[heatmap_genes]
+
+# Get the mean gene counts for sidebar
+gene_val_list = []
+gene_val_dict = {}
+for clust in sorted(set(t_cell_harmonized.obs["leiden_labels"]), key = int) :
+    gene_vals = t_cell_harmonized.obs["n_genes"][t_cell_harmonized.obs["leiden_labels"] == clust]
+
+    mean = np.mean(gene_vals)
+    gene_val_list.append(mean)
+    gene_val_dict[clust] = mean
+
+colors = sns.color_palette("ch:2.5,-.2,dark=.2", n_colors = len(gene_val_list)).as_hex()
+# Put the gene values in order lowest to highest
+sorted_cols = sorted(gene_val_list)
+
+fig, ax = plt.subplots(1, 1, figsize = (10, 10))
+divider = make_axes_locatable(ax)
+axDivY = divider.append_axes( 'right', size=0.2, pad= 0.1)
+axDivY2 = divider.append_axes( 'right', size=0.2, pad= 0.2)
+axDivY3 = divider.append_axes( 'right', size=0.2, pad= 0.2)
+axDivY4 = divider.append_axes( 'top', size=0.2, pad= 0.2)
+
+# color_label_list =[random.randint(0,14) for i in range(14)]
+ax1 = sns.clustermap(heatmap_df, method = "ward", row_cluster =False, col_cluster =True, z_score = 0, cmap = "vlag")
+col_order = np.array([name.split("_")[-1] for name in ax1.data2d.columns])
+index = [sorted_cols.index(gene_val_dict[clust]) for clust in col_order]
+plt.close()
+
+heatmap_carpet = ax1.data2d
+
+ax1 = sns.heatmap(ax1.data2d, cmap = "vlag", ax = ax, cbar_ax = axDivY)
+ax2 = axDivY2.imshow(np.array([[min(gene_val_list), max(gene_val_list)]]), cmap = mpl.colors.ListedColormap(list(colors)),
+                     interpolation = "nearest", aspect = "auto")
+axDivY2.set_axis_off()
+axDivY2.set_visible(False)
+_ = plt.colorbar(ax2, cax = axDivY3)
+_ = axDivY3.set_title("n_genes")
+ax3 = axDivY4.imshow(np.array([index]),cmap=mpl.colors.ListedColormap(list(colors)),
+              interpolation="nearest", aspect="auto")
+axDivY4.set_axis_off()
+_ = plt.title("top genes for every cluster")
+plt.show()
 ```
 
 Finally, we wanted to make a publication-ready figure using the wonderful ```ComplexHeatmap``` package, where we can
@@ -439,91 +439,92 @@ library(tidyverse)
 library(magrittr)
 library(circlize)
 
-# heatmap_data <- reticulate::py$heatmap_carpet
-# annotation_info <- reticulate::py$annot_genes
-# rownames(annotation_info) <- annotation_info$index
-# annotation_info$index <- NULL
-#
-#
-# for (c in colnames(annotation_info)){
-#   annotation_info[[c]] <- unlist(annotation_info[[c]])
-# }
-# # Change the column names to be cleaner
-# colnames(heatmap_data) <- paste("Cluster", unlist(strsplit(colnames(heatmap_data), "_"))[3*(1:length(colnames(heatmap_data)))], sep = " ")
-#
-# # Make column names consistent with heatmap data
-# colnames(annotation_info) <- sapply(str_replace(colnames(annotation_info), "_", " "), str_to_title)
-#
-# # Lets just get the genes
-# annotation_genes <- unique(as.character(unlist(annotation_info[1:5,])))
-# annotation_genes <- annotation_genes[annotation_genes != ""]
-#
-# # Now lets organize the color info that will be used for annotations
-# col_info = annotation_info %>%
-#   t() %>%
-#   as.data.frame() %>%
-#   dplyr::select(-mean_genes) %>%
-#   rownames_to_column(var = "cluster") %>%
-#   reshape2::melt(id.vars = c("cluster", "col")) %>%
-#   select(-variable)
-#
-# # Get the gene colors
-# gene_cols = c()
-# for (gene in annotation_genes){
-#   color = as.character(filter(col_info, value == gene)["col"][[1]])
-#   gene_cols = c(gene_cols, color)
-# }
-#
-# # Get the cluster colors
-# clust_cols <- c()
-# for (clust in colnames(heatmap_data)){
-#   color <- col_info %>%
-#     dplyr::select(cluster, col) %>%
-#     distinct() %>%
-#     filter(cluster == clust)
-#   clust_cols <- c(clust_cols, as.character(color$col))
-# }
-#
-# mean_genes <- annotation_info["mean_genes",] %>%
-#   mutate_each(funs(as.numeric(as.character(.)))) %>%
-#   select(colnames(heatmap_data)) # To order them like they will be ordered in the heatmap (same as how GEX data was read in)
-#
-# gene_col_fun <- colorRamp2(c(min(mean_genes), max(mean_genes)), c("#1d111d", "#bbe7c8"))
-# gene_bar <-  HeatmapAnnotation("mean # genes" = as.numeric(mean_genes), col = list("mean # genes" = gene_col_fun), show_legend = FALSE)
-# gene_lgd <- Legend(col_fun = gene_col_fun, title = "# genes", legend_height = unit(4, "cm"), title_position = "topcenter")
-#
-#
-# heatmap_col_fun = colorRamp2(c(min(heatmap_data), 0, max(heatmap_data)), c("purple", "black", "yellow"))
-# heatmap_lgd = Legend(col_fun = heatmap_col_fun, title = "z-score", legend_height = unit(4, "cm"), title_position = "topcenter")
-#
-# lgd_list <- packLegend(heatmap_lgd, gene_lgd, column_gap = unit(1,"cm"), direction = "horizontal")
-#
-# split <- c()
-# for (clust in colnames(heatmap_data)){
-#   n_split <- as.numeric(as.character(annotation_info["n_genes", clust]))
-#   split <- c(split, rep(gsub("Cluster ", "", clust), n_split))
-# }
-# split <- factor(split, levels = as.character(unique(split)))
-#
-# # Make block annotation
-# left_annotation =   HeatmapAnnotation(blk = anno_block(gp = gpar(fill = clust_cols, col = clust_cols)), which = "row", width = unit(1.5, "mm"))
-#
-# heatmap_list = Heatmap(heatmap_data, name = "z-score", col = heatmap_col_fun, cluster_rows = FALSE, cluster_columns = TRUE,
-#                        cluster_row_slices = FALSE, row_km = 1, cluster_column_slices = FALSE,
-#                        clustering_method_columns = "ward.D2", clustering_distance_columns = "euclidean",
-#                        column_dend_reorder = FALSE, top_annotation = gene_bar, show_heatmap_legend = FALSE,
-#                        column_names_gp = gpar(col = clust_cols, fontface = "bold"),
-#                        split = split, left_annotation = left_annotation, show_column_names = FALSE) +
-#   rowAnnotation(link = anno_mark(at = match(annotation_genes, rownames(heatmap_data)),labels = annotation_genes,
-#                                  labels_gp = gpar(col = gene_cols, fontsize = 8, fontface = "bold")))
-#
-# draw(heatmap_list, heatmap_legend_list =lgd_list, padding = unit(c(0.5, 0.5, 2, 2), "cm"), cluster_rows = FALSE,
-#      cluster_row_slices = FALSE)
+heatmap_data <- reticulate::py$heatmap_carpet
+annotation_info <- reticulate::py$annot_genes
+rownames(annotation_info) <- annotation_info$index
+annotation_info$index <- NULL
+
+
+for (c in colnames(annotation_info)){
+  annotation_info[[c]] <- unlist(annotation_info[[c]])
+}
+# Change the column names to be cleaner
+colnames(heatmap_data) <- paste("Cluster", unlist(strsplit(colnames(heatmap_data), "_"))[3*(1:length(colnames(heatmap_data)))], sep = " ")
+
+# Make column names consistent with heatmap data
+colnames(annotation_info) <- sapply(str_replace(colnames(annotation_info), "_", " "), str_to_title)
+
+# Lets just get the genes
+annotation_genes <- unique(as.character(unlist(annotation_info[1:5,])))
+annotation_genes <- annotation_genes[annotation_genes != ""]
+
+# Now lets organize the color info that will be used for annotations
+col_info = annotation_info %>%
+  t() %>%
+  as.data.frame() %>%
+  dplyr::select(-mean_genes) %>%
+  rownames_to_column(var = "cluster") %>%
+  reshape2::melt(id.vars = c("cluster", "col")) %>%
+  select(-variable)
+
+# Get the gene colors
+gene_cols = c()
+for (gene in annotation_genes){
+  color = as.character(filter(col_info, value == gene)["col"][[1]])
+  gene_cols = c(gene_cols, color)
+}
+
+# Get the cluster colors
+clust_cols <- c()
+for (clust in colnames(heatmap_data)){
+  color <- col_info %>%
+    dplyr::select(cluster, col) %>%
+    distinct() %>%
+    filter(cluster == clust)
+  clust_cols <- c(clust_cols, as.character(color$col))
+}
+
+mean_genes <- annotation_info["mean_genes",] %>%
+  mutate_each(funs(as.numeric(as.character(.)))) %>%
+  select(colnames(heatmap_data)) # To order them like they will be ordered in the heatmap (same as how GEX data was read in)
+
+gene_col_fun <- colorRamp2(c(min(mean_genes), max(mean_genes)), c("#1d111d", "#bbe7c8"))
+gene_bar <-  HeatmapAnnotation("mean # genes" = as.numeric(mean_genes), col = list("mean # genes" = gene_col_fun), show_legend = FALSE)
+gene_lgd <- Legend(col_fun = gene_col_fun, title = "# genes", legend_height = unit(4, "cm"), title_position = "topcenter")
+
+
+heatmap_col_fun = colorRamp2(c(min(heatmap_data), 0, max(heatmap_data)), c("purple", "black", "yellow"))
+heatmap_lgd = Legend(col_fun = heatmap_col_fun, title = "z-score", legend_height = unit(4, "cm"), title_position = "topcenter")
+
+lgd_list <- packLegend(heatmap_lgd, gene_lgd, column_gap = unit(1,"cm"), direction = "horizontal")
+
+split <- c()
+for (clust in colnames(heatmap_data)){
+  n_split <- as.numeric(as.character(annotation_info["n_genes", clust]))
+  split <- c(split, rep(gsub("Cluster ", "", clust), n_split))
+}
+split <- factor(split, levels = as.character(unique(split)))
+
+# Make block annotation
+left_annotation =   HeatmapAnnotation(blk = anno_block(gp = gpar(fill = clust_cols, col = clust_cols)), which = "row", width = unit(1.5, "mm"))
+
+heatmap_list = Heatmap(heatmap_data, name = "z-score", col = heatmap_col_fun, cluster_rows = FALSE, cluster_columns = TRUE,
+                       cluster_row_slices = FALSE, row_km = 1, cluster_column_slices = FALSE,
+                       clustering_method_columns = "ward.D2", clustering_distance_columns = "euclidean",
+                       column_dend_reorder = FALSE, top_annotation = gene_bar, show_heatmap_legend = FALSE,
+                       column_names_gp = gpar(col = clust_cols, fontface = "bold"),
+                       split = split, left_annotation = left_annotation, show_column_names = FALSE) +
+  rowAnnotation(link = anno_mark(at = match(annotation_genes, rownames(heatmap_data)),labels = annotation_genes,
+                                 labels_gp = gpar(col = gene_cols, fontsize = 8, fontface = "bold")))
+
+draw(heatmap_list, heatmap_legend_list =lgd_list, padding = unit(c(0.5, 0.5, 2, 2), "cm"), cluster_rows = FALSE,
+     cluster_row_slices = FALSE)
 
 ```
 
 
-
+After inspecting all of the top marker genes for each cluster, we assigned the clusters specific annotations, which are
+shown below.
 
 ```{python annotations}
 
@@ -539,7 +540,6 @@ annotation_dict = {"1" : "CD8 T (GZMK)",
                   "10" : "CD4 Th17 (RORA)"}
 
 color_dict = dict(zip(annotation_dict.values(), t_cell_harmonized.uns["leiden_labels_colors"]))
-print(color_dict)
 
 t_cell_harmonized.obs["annotation"] = [annotation_dict[c] for c in t_cell_harmonized.obs["leiden_labels"]]
 figure = sc.pl.umap(t_cell_harmonized, color = ["annotation"],
@@ -560,132 +560,133 @@ on these gene sets
 
 ```{python get_pseudobulk_stats}
 
-# de_res = t_cell_harmonized.varm["de_res"]
-# de_res = pd.DataFrame(de_res, index = t_cell_harmonized.var_names)
-#
-# pseudo_stats = pd.DataFrame()
-# for cl in set(t_cell_harmonized.obs["leiden_labels"]) :
-#     df_dict = {"log_fc": t_cell_harmonized.varm["de_res"][
-#                    "pseudobulk_log_fold_change:{clust}".format(clust=cl)],
-#                "pval": t_cell_harmonized.varm["de_res"]["pseudobulk_p_val:{clust}".format(clust=cl)],
-#                "percent_cells": t_cell_harmonized.varm["de_res"]["percentage:{clust}".format(clust=cl)]}
-#     df = pd.DataFrame(df_dict, index=t_cell_harmonized.var.index)
-#     df["cluster"] = f"cluster_{cl}"
-#     df["feature"] = df.index.values
-#     pseudo_stats = pseudo_stats.append(df)
+de_res = t_cell_harmonized.varm["de_res"]
+de_res = pd.DataFrame(de_res, index = t_cell_harmonized.var_names)
+
+pseudo_stats = pd.DataFrame()
+for cl in set(t_cell_harmonized.obs["leiden_labels"]) :
+    df_dict = {"log_fc": t_cell_harmonized.varm["de_res"][
+                   "pseudobulk_log_fold_change:{clust}".format(clust=cl)],
+               "pval": t_cell_harmonized.varm["de_res"]["pseudobulk_p_val:{clust}".format(clust=cl)],
+               "percent_cells": t_cell_harmonized.varm["de_res"]["percentage:{clust}".format(clust=cl)]}
+    df = pd.DataFrame(df_dict, index=t_cell_harmonized.var.index)
+    df["cluster"] = f"cluster_{cl}"
+    df["feature"] = df.index.values
+    pseudo_stats = pseudo_stats.append(df)
 
 ```
 
 ```{r th_gsea, warning = FALSE, message = FALSE, fig.height = 8, fig.width = 10}
-# library(glue)
-# library(fgsea)
-# library(ggpubr)
-#
-# pseudo_stats <- reticulate::py$pseudo_stats
-#
-# # Adjust the old cluster names to be new annotations
-# annotations <- c("1" = "CD8 T (GZMK)",
-#                   "2" = "quiesCD8 T ",
-#                   "3" = "CD8 T (CLIC3)",
-#                   "4" = "Tgd (TRDC)",
-#                   "5" = "CD8 T (EGR2)",
-#                   "6" = "CD4 Treg (FOXP3)",
-#                   "7" = "CD4 Th2 (GATA3)",
-#                   "8" = "CD4 ThIFNR (ISG15)",
-#                   "9" = "CD4 T (CD40LG)",
-#                   "10" = "CD4 Th17 (RORA)")
-#
-# pseudo_stats$annotation <- sapply(pseudo_stats$cluster, function(x){
-#   cl <- sub("cluster_", "", x)
-#   return(annotations[cl])
-# })
-#
-# # Load in the Seumois datasets
-#
-# seumois_df <- read.csv("/home/nealpsmith/projects/medoff/data/gene_sets/seumois_gene_sets.csv")
-#
-# seumois_gene_sets <- lapply(colnames(seumois_df), function(n){
-#   genes <- seumois_df[[n]]
-#   genes <- genes[genes != ""]
-#   return(genes)
-# })
-# names(seumois_gene_sets) <- colnames(seumois_df)
-#
-#
-# ## Want to make the three we want for the paper ##
-# pair_df = data.frame("cluster" = c("7", "10", "8"),
-#                      "gene_set" = c("Th2", "Th17", "IFN"))
-#
-#
-#
-# plot_list <- list()
-# for (i in 1:nrow(pair_df)){
-#   cluster <- pair_df$cluster[i]
-#   gs <- pair_df$gene_set[i]
-#
-#   pseudo_clust <- pseudo_stats[pseudo_stats$cluster == glue("cluster_{cluster}"),]
-#
-#   ranks <- pseudo_clust %>%
-#     dplyr::filter(percent_cells > 5) %>%
-#     dplyr::arrange(desc(log_fc)) %>%
-#     dplyr::select(feature, log_fc) %>%
-#     deframe(.)
-#
-#   fgsea_res <- fgsea(pathways = seumois_gene_sets, stats = ranks, nperm = 10000)
-#
-#   annot <- annotations[[cluster]]
-#
-#   nes <- round(fgsea_res$NES[fgsea_res$pathway == gs], 3)
-#   pval <- round(fgsea_res$pval[fgsea_res$pathway == gs], 3)
-#   n_genes <- fgsea_res$size[fgsea_res$pathway == gs]
-#
-#   rnk <- rank(-ranks)
-#   ord <- order(rnk)
-#
-#   statsAdj <- ranks[ord]
-#   statsAdj <- sign(statsAdj) * (abs(statsAdj) ^ 1)
-#   statsAdj <- statsAdj / max(abs(statsAdj))
-#
-#   pathway <- unname(as.vector(na.omit(match(seumois_gene_sets[[gs]], names(statsAdj)))))
-#   pathway <- sort(pathway)
-#
-#   gseaRes <- calcGseaStat(statsAdj, selectedStats = pathway,
-#                             returnAllExtremes = TRUE)
-#
-#   bottoms <- gseaRes$bottoms
-#   tops <- gseaRes$tops
-#
-#   n <- length(statsAdj)
-#   xs <- as.vector(rbind(pathway - 1, pathway))
-#   ys <- as.vector(rbind(bottoms, tops))
-#   toPlot <- data.frame(x=c(0, xs, n + 1), y=c(0, ys, 0))
-#
-#   diff <- (max(tops) - min(bottoms)) / 8
-#
-#   x=y=NULL
-#
-#   p <- ggplot(toPlot, aes(x = x, y = y)) +
-#     # geom_point(color="blue", size=0.1) +
-#     geom_line(color="blue") +
-#     geom_hline(yintercept=0, colour="black") +
-#     geom_segment(data=data.frame(x=pathway),
-#                      mapping=aes(x=x, y=-0.15,
-#                                  xend=x, yend=-0.25),
-#                      size=0.4) +
-#     scale_y_continuous(expand = c(0.05,0.05)) +
-#     xlab("Rank") + ylab("Enrichment score") +
-#     geom_text(aes(label = "")) +
-#     annotate("text", label = glue("NES : {nes}"), x = length(ranks) - 1000, y  =0.9) +
-#     annotate("text", label = glue("p-value : {pval}"), x = length(ranks) - 1000, y = 0.8) +
-#     annotate("text", label = glue("# genes : {n_genes}"), x = length(ranks) - 1000, y = 0.7) +
-#     ggtitle(glue("{gs} signature : {annot}")) +
-#     theme_classic(base_size = 12)
-#
-#   plot_list <- c(plot_list, list(p))
-# }
-#
-# plots <- ggarrange(plotlist = plot_list, ncol = 2, nrow = 2)
-# plots
+
+library(glue)
+library(fgsea)
+library(ggpubr)
+
+pseudo_stats <- reticulate::py$pseudo_stats
+
+# Adjust the old cluster names to be new annotations
+annotations <- c("1" = "CD8 T (GZMK)",
+                  "2" = "quiesCD8 T ",
+                  "3" = "CD8 T (CLIC3)",
+                  "4" = "Tgd (TRDC)",
+                  "5" = "CD8 T (EGR2)",
+                  "6" = "CD4 Treg (FOXP3)",
+                  "7" = "CD4 Th2 (GATA3)",
+                  "8" = "CD4 ThIFNR (ISG15)",
+                  "9" = "CD4 T (CD40LG)",
+                  "10" = "CD4 Th17 (RORA)")
+
+pseudo_stats$annotation <- sapply(pseudo_stats$cluster, function(x){
+  cl <- sub("cluster_", "", x)
+  return(annotations[cl])
+})
+
+# Load in the Seumois datasets
+
+seumois_df <- read.csv("/home/nealpsmith/projects/medoff/data/gene_sets/seumois_gene_sets.csv")
+
+seumois_gene_sets <- lapply(colnames(seumois_df), function(n){
+  genes <- seumois_df[[n]]
+  genes <- genes[genes != ""]
+  return(genes)
+})
+names(seumois_gene_sets) <- colnames(seumois_df)
+
+
+## Want to make the three we want for the paper ##
+pair_df = data.frame("cluster" = c("7", "10", "8"),
+                     "gene_set" = c("Th2", "Th17", "IFN"))
+
+
+
+plot_list <- list()
+for (i in 1:nrow(pair_df)){
+  cluster <- pair_df$cluster[i]
+  gs <- pair_df$gene_set[i]
+
+  pseudo_clust <- pseudo_stats[pseudo_stats$cluster == glue("cluster_{cluster}"),]
+
+  ranks <- pseudo_clust %>%
+    dplyr::filter(percent_cells > 5) %>%
+    dplyr::arrange(desc(log_fc)) %>%
+    dplyr::select(feature, log_fc) %>%
+    deframe(.)
+
+  fgsea_res <- fgsea(pathways = seumois_gene_sets, stats = ranks, nperm = 10000)
+
+  annot <- annotations[[cluster]]
+
+  nes <- round(fgsea_res$NES[fgsea_res$pathway == gs], 3)
+  pval <- round(fgsea_res$pval[fgsea_res$pathway == gs], 3)
+  n_genes <- fgsea_res$size[fgsea_res$pathway == gs]
+
+  rnk <- rank(-ranks)
+  ord <- order(rnk)
+
+  statsAdj <- ranks[ord]
+  statsAdj <- sign(statsAdj) * (abs(statsAdj) ^ 1)
+  statsAdj <- statsAdj / max(abs(statsAdj))
+
+  pathway <- unname(as.vector(na.omit(match(seumois_gene_sets[[gs]], names(statsAdj)))))
+  pathway <- sort(pathway)
+
+  gseaRes <- calcGseaStat(statsAdj, selectedStats = pathway,
+                            returnAllExtremes = TRUE)
+
+  bottoms <- gseaRes$bottoms
+  tops <- gseaRes$tops
+
+  n <- length(statsAdj)
+  xs <- as.vector(rbind(pathway - 1, pathway))
+  ys <- as.vector(rbind(bottoms, tops))
+  toPlot <- data.frame(x=c(0, xs, n + 1), y=c(0, ys, 0))
+
+  diff <- (max(tops) - min(bottoms)) / 8
+
+  x=y=NULL
+
+  p <- ggplot(toPlot, aes(x = x, y = y)) +
+    # geom_point(color="blue", size=0.1) +
+    geom_line(color="blue") +
+    geom_hline(yintercept=0, colour="black") +
+    geom_segment(data=data.frame(x=pathway),
+                     mapping=aes(x=x, y=-0.15,
+                                 xend=x, yend=-0.25),
+                     size=0.4) +
+    scale_y_continuous(expand = c(0.05,0.05)) +
+    xlab("Rank") + ylab("Enrichment score") +
+    geom_text(aes(label = "")) +
+    annotate("text", label = glue("NES : {nes}"), x = length(ranks) - 1000, y  =0.9) +
+    annotate("text", label = glue("p-value : {pval}"), x = length(ranks) - 1000, y = 0.8) +
+    annotate("text", label = glue("# genes : {n_genes}"), x = length(ranks) - 1000, y = 0.7) +
+    ggtitle(glue("{gs} signature : {annot}")) +
+    theme_classic(base_size = 12)
+
+  plot_list <- c(plot_list, list(p))
+}
+
+plots <- ggarrange(plotlist = plot_list, ncol = 2, nrow = 2)
+plots
 ```
 
 To further validate these annotations, we performed GSEA using gene sets we devised ourselves from published data from
@@ -696,143 +697,143 @@ giving us confidence in our annotations.
 
 ```{r cano_gsea, warning = FALSE, message = FALSE, fig.height = 8, fig.width = 10}
 library(DESeq2)
+
+meta_data <- read.csv("/home/nealpsmith/projects/medoff/cano_bulk/data/NCOMMS-19-7936188_bulk_RNAseq_metadata.txt", sep = "\t",
+                      row.names = 2)
+meta_data$row.names <- NULL
+count_data <- read.csv("/home/nealpsmith/projects/medoff/cano_bulk/data/NCOMMS-19-7936188_bulk_RNAseq_raw_counts.txt", sep = "\t")
+
 #
-# meta_data <- read.csv("/home/nealpsmith/projects/medoff/cano_bulk/data/NCOMMS-19-7936188_bulk_RNAseq_metadata.txt", sep = "\t",
-#                       row.names = 2)
-# meta_data$row.names <- NULL
-# count_data <- read.csv("/home/nealpsmith/projects/medoff/cano_bulk/data/NCOMMS-19-7936188_bulk_RNAseq_raw_counts.txt", sep = "\t")
-#
-# #
-# # genes <- rownames(count_data)
-# # mart <- useDataset("hsapiens_gene_ensembl", useMart("ENSEMBL_MART_ENSEMBL"))
-# # annot<-getBM(c("ensembl_gene_id", "hgnc_symbol"), mart=mart)
-#
-# # write.csv(annot, "/home/nealpsmith/data/useful/human_ensembl_to_hgnc.csv")
-# annot <- read.csv("/home/nealpsmith/data/useful/human_ensembl_to_hgnc.csv")
-# # lets get the genes for the counts
-# count_temp <- count_data %>%
-# rownames_to_column(var = "ensembl_gene_id") %>%
-# dplyr::left_join(annot, by = "ensembl_gene_id") %>%
-# dplyr::filter(hgnc_symbol != "") %>%
-# distinct(hgnc_symbol, .keep_all = TRUE) %>%
-# column_to_rownames(var = "hgnc_symbol") %>%
-# dplyr::select(-ensembl_gene_id)
-#
-# # Lets filter
-# meta_temp <- meta_data %>%
-# dplyr::filter(cell_type == "CD4_Naive", cytokine_condition %in% c("Th1", "Th2", "Th17", "IFNB"))
-#
-# conditions <-c("Th1", "Th2", "Th17", "IFNB")
-#
-# sig_gene_list <- list()
-# for (test_condition in conditions){
-# meta_temp$in_subset <- ifelse(meta_temp$cytokine_condition == test_condition, "yes", "no")
-#
-# count_temp <- count_temp[,rownames(meta_temp)]
-# stopifnot(rownames(meta_temp) == colnames(count_temp))
-#
-# dds <- DESeqDataSetFromMatrix(countData = count_temp,
-#                               colData = meta_temp,
-#                               design = ~in_subset)
-# # Filtering
-# keep <- rowSums(counts(dds) >= 10) >= round(nrow(meta_temp) * 0.66)
-# dds <- dds[keep,]
-# dds <- DESeq(dds)
-# res <- results(dds)
-# plot_data <- as.data.frame(res)
-#
-# sig_genes <- plot_data %>%
-#   arrange(plot_data$pvalue)%>%
-#   dplyr::filter(log2FoldChange > 1, padj < 0.1) %>%
-#   rownames()
-# sig_gene_list[[test_condition]] <- sig_genes
-#
-# }
-# max_ln<-max(sapply(sig_gene_list, length))
-#
-# sig_df <- data.frame("Th1" = c(sig_gene_list$Th1, rep(NA, max_ln - length(sig_gene_list$Th1))),
-#                    "Th2" = c(sig_gene_list$Th2, rep(NA, max_ln - length(sig_gene_list$Th2))),
-#                    "Th17" = c(sig_gene_list$Th17, rep(NA, max_ln - length(sig_gene_list$Th17))),
-#                    "IFNB" = c(c(sig_gene_list$IFNB, rep(NA, max_ln - length(sig_gene_list$IFNB)))))
-#
-#
-# pair_df = data.frame("cluster" = c("7", "10", "8"),
-#                      "gene_set" = c("Th2", "Th17", "IFNB"))
-#
-# plot_list <- list()
-# for (i in 1:nrow(pair_df)){
-#   cluster <- pair_df$cluster[i]
-#   gs <- pair_df$gene_set[i]
-#
-#   pseudo_clust <- pseudo_stats[pseudo_stats$cluster == glue("cluster_{cluster}"),]
-#
-#   ranks <- pseudo_clust %>%
-#     dplyr::filter(percent_cells > 5) %>%
-#     dplyr::arrange(desc(log_fc)) %>%
-#     dplyr::select(feature, log_fc) %>%
-#     deframe(.)
-#
-#   fgsea_res <- fgsea(pathways = sig_gene_list, stats = ranks, nperm = 10000)
-#
-#   annot <- annotations[[cluster]]
-#
-#   nes <- round(fgsea_res$NES[fgsea_res$pathway == gs], 3)
-#   pval <- round(fgsea_res$pval[fgsea_res$pathway == gs], 3)
-#   n_genes <- fgsea_res$size[fgsea_res$pathway == gs]
-#
-#   rnk <- rank(-ranks)
-#   ord <- order(rnk)
-#
-#   statsAdj <- ranks[ord]
-#   statsAdj <- sign(statsAdj) * (abs(statsAdj) ^ 1)
-#   statsAdj <- statsAdj / max(abs(statsAdj))
-#
-#   pathway <- unname(as.vector(na.omit(match(sig_gene_list[[gs]], names(statsAdj)))))
-#   pathway <- sort(pathway)
-#
-#   gseaRes <- calcGseaStat(statsAdj, selectedStats = pathway,
-#                             returnAllExtremes = TRUE)
-#
-#   bottoms <- gseaRes$bottoms
-#   tops <- gseaRes$tops
-#
-#   n <- length(statsAdj)
-#   xs <- as.vector(rbind(pathway - 1, pathway))
-#   ys <- as.vector(rbind(bottoms, tops))
-#   toPlot <- data.frame(x=c(0, xs, n + 1), y=c(0, ys, 0))
-#
-#   diff <- (max(tops) - min(bottoms)) / 8
-#
-#   x=y=NULL
-#
-#   p <- ggplot(toPlot, aes(x = x, y = y)) +
-#     # geom_point(color="blue", size=0.1) +
-#     geom_line(color="blue") +
-#     geom_hline(yintercept=0, colour="black") +
-#     geom_segment(data=data.frame(x=pathway),
-#                      mapping=aes(x=x, y=-0.15,
-#                                  xend=x, yend=-0.25),
-#                      size=0.4) +
-#     scale_y_continuous(expand = c(0.05,0.05)) +
-#     xlab("Rank") + ylab("Enrichment score") +
-#     geom_text(aes(label = "")) +
-#     annotate("text", label = glue("NES : {nes}"), x = length(ranks) - 1000, y  =0.9) +
-#     annotate("text", label = glue("p-value : {pval}"), x = length(ranks) - 1000, y = 0.8) +
-#     annotate("text", label = glue("# genes : {n_genes}"), x = length(ranks) - 1000, y = 0.7) +
-#     ggtitle(glue("{gs} signature : {annot}")) +
-#     theme_classic(base_size = 12)
-#
-#   # p <- plotEnrichment(sig_gene_list[[gs]], ranks) +
-#   #   ggtitle(glue("{gs} signature : {annot}")) +
-#   #   geom_text(aes(label = "")) +
-#   #   annotate("text", label = glue("NES : {nes}"), x = length(ranks) - 1000, y  =1) +
-#   #   annotate("text", label = glue("p-value : {pval}"), x = length(ranks) - 1000, y = 0.93) +
-#   #   theme_classic()
-#   plot_list <- c(plot_list, list(p))
-# }
-#
-# plots <- ggarrange(plotlist = plot_list, ncol = 2, nrow = 2)
-# plots
+# genes <- rownames(count_data)
+# mart <- useDataset("hsapiens_gene_ensembl", useMart("ENSEMBL_MART_ENSEMBL"))
+# annot<-getBM(c("ensembl_gene_id", "hgnc_symbol"), mart=mart)
+
+# write.csv(annot, "/home/nealpsmith/data/useful/human_ensembl_to_hgnc.csv")
+annot <- read.csv("/home/nealpsmith/data/useful/human_ensembl_to_hgnc.csv")
+# lets get the genes for the counts
+count_temp <- count_data %>%
+rownames_to_column(var = "ensembl_gene_id") %>%
+dplyr::left_join(annot, by = "ensembl_gene_id") %>%
+dplyr::filter(hgnc_symbol != "") %>%
+distinct(hgnc_symbol, .keep_all = TRUE) %>%
+column_to_rownames(var = "hgnc_symbol") %>%
+dplyr::select(-ensembl_gene_id)
+
+# Lets filter
+meta_temp <- meta_data %>%
+dplyr::filter(cell_type == "CD4_Naive", cytokine_condition %in% c("Th1", "Th2", "Th17", "IFNB"))
+
+conditions <-c("Th1", "Th2", "Th17", "IFNB")
+
+sig_gene_list <- list()
+for (test_condition in conditions){
+meta_temp$in_subset <- ifelse(meta_temp$cytokine_condition == test_condition, "yes", "no")
+
+count_temp <- count_temp[,rownames(meta_temp)]
+stopifnot(rownames(meta_temp) == colnames(count_temp))
+
+dds <- DESeqDataSetFromMatrix(countData = count_temp,
+                              colData = meta_temp,
+                              design = ~in_subset)
+# Filtering
+keep <- rowSums(counts(dds) >= 10) >= round(nrow(meta_temp) * 0.66)
+dds <- dds[keep,]
+dds <- DESeq(dds)
+res <- results(dds)
+plot_data <- as.data.frame(res)
+
+sig_genes <- plot_data %>%
+  arrange(plot_data$pvalue)%>%
+  dplyr::filter(log2FoldChange > 1, padj < 0.1) %>%
+  rownames()
+sig_gene_list[[test_condition]] <- sig_genes
+
+}
+max_ln<-max(sapply(sig_gene_list, length))
+
+sig_df <- data.frame("Th1" = c(sig_gene_list$Th1, rep(NA, max_ln - length(sig_gene_list$Th1))),
+                   "Th2" = c(sig_gene_list$Th2, rep(NA, max_ln - length(sig_gene_list$Th2))),
+                   "Th17" = c(sig_gene_list$Th17, rep(NA, max_ln - length(sig_gene_list$Th17))),
+                   "IFNB" = c(c(sig_gene_list$IFNB, rep(NA, max_ln - length(sig_gene_list$IFNB)))))
+
+
+pair_df = data.frame("cluster" = c("7", "10", "8"),
+                     "gene_set" = c("Th2", "Th17", "IFNB"))
+
+plot_list <- list()
+for (i in 1:nrow(pair_df)){
+  cluster <- pair_df$cluster[i]
+  gs <- pair_df$gene_set[i]
+
+  pseudo_clust <- pseudo_stats[pseudo_stats$cluster == glue("cluster_{cluster}"),]
+
+  ranks <- pseudo_clust %>%
+    dplyr::filter(percent_cells > 5) %>%
+    dplyr::arrange(desc(log_fc)) %>%
+    dplyr::select(feature, log_fc) %>%
+    deframe(.)
+
+  fgsea_res <- fgsea(pathways = sig_gene_list, stats = ranks, nperm = 10000)
+
+  annot <- annotations[[cluster]]
+
+  nes <- round(fgsea_res$NES[fgsea_res$pathway == gs], 3)
+  pval <- round(fgsea_res$pval[fgsea_res$pathway == gs], 3)
+  n_genes <- fgsea_res$size[fgsea_res$pathway == gs]
+
+  rnk <- rank(-ranks)
+  ord <- order(rnk)
+
+  statsAdj <- ranks[ord]
+  statsAdj <- sign(statsAdj) * (abs(statsAdj) ^ 1)
+  statsAdj <- statsAdj / max(abs(statsAdj))
+
+  pathway <- unname(as.vector(na.omit(match(sig_gene_list[[gs]], names(statsAdj)))))
+  pathway <- sort(pathway)
+
+  gseaRes <- calcGseaStat(statsAdj, selectedStats = pathway,
+                            returnAllExtremes = TRUE)
+
+  bottoms <- gseaRes$bottoms
+  tops <- gseaRes$tops
+
+  n <- length(statsAdj)
+  xs <- as.vector(rbind(pathway - 1, pathway))
+  ys <- as.vector(rbind(bottoms, tops))
+  toPlot <- data.frame(x=c(0, xs, n + 1), y=c(0, ys, 0))
+
+  diff <- (max(tops) - min(bottoms)) / 8
+
+  x=y=NULL
+
+  p <- ggplot(toPlot, aes(x = x, y = y)) +
+    # geom_point(color="blue", size=0.1) +
+    geom_line(color="blue") +
+    geom_hline(yintercept=0, colour="black") +
+    geom_segment(data=data.frame(x=pathway),
+                     mapping=aes(x=x, y=-0.15,
+                                 xend=x, yend=-0.25),
+                     size=0.4) +
+    scale_y_continuous(expand = c(0.05,0.05)) +
+    xlab("Rank") + ylab("Enrichment score") +
+    geom_text(aes(label = "")) +
+    annotate("text", label = glue("NES : {nes}"), x = length(ranks) - 1000, y  =0.9) +
+    annotate("text", label = glue("p-value : {pval}"), x = length(ranks) - 1000, y = 0.8) +
+    annotate("text", label = glue("# genes : {n_genes}"), x = length(ranks) - 1000, y = 0.7) +
+    ggtitle(glue("{gs} signature : {annot}")) +
+    theme_classic(base_size = 12)
+
+  # p <- plotEnrichment(sig_gene_list[[gs]], ranks) +
+  #   ggtitle(glue("{gs} signature : {annot}")) +
+  #   geom_text(aes(label = "")) +
+  #   annotate("text", label = glue("NES : {nes}"), x = length(ranks) - 1000, y  =1) +
+  #   annotate("text", label = glue("p-value : {pval}"), x = length(ranks) - 1000, y = 0.93) +
+  #   theme_classic()
+  plot_list <- c(plot_list, list(p))
+}
+
+plots <- ggarrange(plotlist = plot_list, ncol = 2, nrow = 2)
+plots
 
 ```
 
@@ -842,99 +843,101 @@ Trm phenotype.
 
 ```{r gsea_trm_tem, fig.width = 12, fig.height = 8}
 
-# kumar_de_data <- read.csv("/home/nealpsmith/projects/medoff/data/kumar_lung_cd69_pos_vs_neg.csv")
-#
-# kumar_trm <- kumar_de_data %>%
-#   dplyr::filter(logFC > 0, FDR < 0.05) %>%
-#   .$Gene
-#
-# kumar_tem <- kumar_de_data %>%
-#   dplyr::filter(logFC < 0, FDR < 0.05) %>%
-#   .$Gene
-#
-# gsea_list <- list("kumar_trm" = kumar_trm, "kumar_tem" = kumar_tem)
-#
-# clusts_to_test <- c("1", "3", "5")
-#
-# plot_list <- list()
-# for (sig in names(gsea_list)){
-#   gene_set <- gsea_list[[sig]]
-#
-#
-#   gs_list <- list(gene_set)
-#   names(gs_list) <- sig
-#
-#   for (cluster in clusts_to_test){
-#     pseudo_clust <- pseudo_stats[pseudo_stats$cluster == glue("cluster_{cluster}"),]
-#
-#     ranks <- pseudo_clust %>%
-#       dplyr::filter(percent_cells > 5) %>%
-#       dplyr::arrange(desc(log_fc)) %>%
-#       dplyr::select(feature, log_fc) %>%
-#       deframe(.)
-#
-#     fgsea_res <- fgsea(pathways = gs_list, stats = ranks, nperm = 10000)
-#
-#     annot <- annotations[[cluster]]
-#
-#     nes <- round(fgsea_res$NES[fgsea_res$pathway == sig], 3)
-#     pval <- round(fgsea_res$pval[fgsea_res$pathway == sig], 3)
-#     n_genes <- fgsea_res$size[fgsea_res$pathway == sig]
-#
-#     rnk <- rank(-ranks)
-#     ord <- order(rnk)
-#
-#     statsAdj <- ranks[ord]
-#     statsAdj <- sign(statsAdj) * (abs(statsAdj) ^ 1)
-#     statsAdj <- statsAdj / max(abs(statsAdj))
-#
-#     pathway <- unname(as.vector(na.omit(match(gs_list[[sig]], names(statsAdj)))))
-#     pathway <- sort(pathway)
-#
-#     gseaRes <- calcGseaStat(statsAdj, selectedStats = pathway,
-#                               returnAllExtremes = TRUE)
-#
-#     bottoms <- gseaRes$bottoms
-#     tops <- gseaRes$tops
-#
-#     n <- length(statsAdj)
-#     xs <- as.vector(rbind(pathway - 1, pathway))
-#     ys <- as.vector(rbind(bottoms, tops))
-#     toPlot <- data.frame(x=c(0, xs, n + 1), y=c(0, ys, 0))
-#
-#     diff <- (max(tops) - min(bottoms)) / 8
-#
-#     x=y=NULL
-#
-#     p <- ggplot(toPlot, aes(x = x, y = y)) +
-#       # geom_point(color="blue", size=0.1) +
-#       geom_line(color="blue") +
-#       geom_hline(yintercept=0, colour="black") +
-#       geom_segment(data=data.frame(x=pathway),
-#                        mapping=aes(x=x, y=-0.15,
-#                                    xend=x, yend=-0.25),
-#                        size=0.4) +
-#       scale_y_continuous(expand = c(0.05,0.05)) +
-#       xlab("Rank") + ylab("Enrichment score") +
-#       geom_text(aes(label = "")) +
-#       annotate("text", label = glue("NES : {nes}"), x = length(ranks) - 2000, y  =0.9) +
-#       annotate("text", label = glue("p-value : {pval}"), x = length(ranks) - 2000, y = 0.8) +
-#       annotate("text", label = glue("# genes : {n_genes}"), x = length(ranks) - 2000, y = 0.7) +
-#       ggtitle(glue("{sig} signature : {annot}")) +
-#       theme_classic(base_size = 12)
-#
-#     # ggsave(glue("/home/nealpsmith/projects/medoff/figures/gsea/{sig}/{annot}_{sig}.pdf"), p)
-#     plot_list <- c(plot_list, list(p))
-#
-#   }
-# }
-# plots <- ggarrange(plotlist = plot_list, ncol = 3, nrow = 2)
-# plots
+kumar_de_data <- read.csv("/home/nealpsmith/projects/medoff/data/kumar_lung_cd69_pos_vs_neg.csv")
+
+kumar_trm <- kumar_de_data %>%
+  dplyr::filter(logFC > 0, FDR < 0.05) %>%
+  .$Gene
+
+kumar_tem <- kumar_de_data %>%
+  dplyr::filter(logFC < 0, FDR < 0.05) %>%
+  .$Gene
+
+gsea_list <- list("kumar_trm" = kumar_trm, "kumar_tem" = kumar_tem)
+
+clusts_to_test <- c("1", "3", "5")
+
+plot_list <- list()
+for (sig in names(gsea_list)){
+  gene_set <- gsea_list[[sig]]
+
+
+  gs_list <- list(gene_set)
+  names(gs_list) <- sig
+
+  for (cluster in clusts_to_test){
+    pseudo_clust <- pseudo_stats[pseudo_stats$cluster == glue("cluster_{cluster}"),]
+
+    ranks <- pseudo_clust %>%
+      dplyr::filter(percent_cells > 5) %>%
+      dplyr::arrange(desc(log_fc)) %>%
+      dplyr::select(feature, log_fc) %>%
+      deframe(.)
+
+    fgsea_res <- fgsea(pathways = gs_list, stats = ranks, nperm = 10000)
+
+    annot <- annotations[[cluster]]
+
+    nes <- round(fgsea_res$NES[fgsea_res$pathway == sig], 3)
+    pval <- round(fgsea_res$pval[fgsea_res$pathway == sig], 3)
+    n_genes <- fgsea_res$size[fgsea_res$pathway == sig]
+
+    rnk <- rank(-ranks)
+    ord <- order(rnk)
+
+    statsAdj <- ranks[ord]
+    statsAdj <- sign(statsAdj) * (abs(statsAdj) ^ 1)
+    statsAdj <- statsAdj / max(abs(statsAdj))
+
+    pathway <- unname(as.vector(na.omit(match(gs_list[[sig]], names(statsAdj)))))
+    pathway <- sort(pathway)
+
+    gseaRes <- calcGseaStat(statsAdj, selectedStats = pathway,
+                              returnAllExtremes = TRUE)
+
+    bottoms <- gseaRes$bottoms
+    tops <- gseaRes$tops
+
+    n <- length(statsAdj)
+    xs <- as.vector(rbind(pathway - 1, pathway))
+    ys <- as.vector(rbind(bottoms, tops))
+    toPlot <- data.frame(x=c(0, xs, n + 1), y=c(0, ys, 0))
+
+    diff <- (max(tops) - min(bottoms)) / 8
+
+    x=y=NULL
+
+    p <- ggplot(toPlot, aes(x = x, y = y)) +
+      # geom_point(color="blue", size=0.1) +
+      geom_line(color="blue") +
+      geom_hline(yintercept=0, colour="black") +
+      geom_segment(data=data.frame(x=pathway),
+                       mapping=aes(x=x, y=-0.15,
+                                   xend=x, yend=-0.25),
+                       size=0.4) +
+      scale_y_continuous(expand = c(0.05,0.05)) +
+      xlab("Rank") + ylab("Enrichment score") +
+      geom_text(aes(label = "")) +
+      annotate("text", label = glue("NES : {nes}"), x = length(ranks) - 2000, y  =0.9) +
+      annotate("text", label = glue("p-value : {pval}"), x = length(ranks) - 2000, y = 0.8) +
+      annotate("text", label = glue("# genes : {n_genes}"), x = length(ranks) - 2000, y = 0.7) +
+      ggtitle(glue("{sig} signature : {annot}")) +
+      theme_classic(base_size = 12)
+
+    # ggsave(glue("/home/nealpsmith/projects/medoff/figures/gsea/{sig}/{annot}_{sig}.pdf"), p)
+    plot_list <- c(plot_list, list(p))
+
+  }
+}
+plots <- ggarrange(plotlist = plot_list, ncol = 3, nrow = 2)
+plots
 
 ```
 
 
 #Differential abundance analysis
+We can look for abundance differences between groups and conditions. First, we used stacked bars to assess the amount
+of the total cells each T cell cluster represented in every sample.
 
 ```{python get_cell_info}
 
@@ -999,7 +1002,7 @@ ggplot(plot_df, aes(x = sample, fill = annotation, y = perc_cells)) + geom_bar(s
 ```
 
 Below, we are looking at the distributions of percents and total number of T cells for our disease groups. The percents
-represent the percent of each AEC subcluster as a function of all AECs.
+represent the percent of each T cell subcluster as a function of all T cells.
 
 ```{r perc_boxplots, fig.width = 12, fig.height = 6}
 plot_df <- t_cell_counts %>%
@@ -1056,143 +1059,115 @@ The least-squares means of the factors in the model were calculated and all pair
 groups at each condition (e.g. AA vs AC within baseline, AA vs AC within allergen, etc.) were compared.  The OR with
 confidence interval for each sample/condition combination were plotted.
 
-```{python cell_info}
-# cell_info = t_cell_harmonized.obs
-```
 
 
 ```{r diff_abund, warning = FALSE, message = FALSE}
-# library(lme4)
-# library(ggplot2)
-# library(emmeans)
-#
-# # A function to perform the mixed-effects logistic regression modelling, returning, p-values, odds-ratio and confidence intervals
-# get_abund_info <- function(dataset, cluster, contrast, random_effects = NULL, fixed_effects = NULL){
-#   # Generate design matrix from cluster assignments
-#   cluster <- as.character(cluster)
-#   designmat <- model.matrix(~ cluster + 0, data.frame(cluster = cluster))
-#   dataset <- cbind(designmat, dataset)
-#   # Create output list to hold results
-#   res <- vector(mode = "list", length = length(unique(cluster)))
-#   names(res) <- attributes(designmat)$dimnames[[2]]
-#
-#   # Create model formulas
-#   model_rhs <- paste0(c(paste0(fixed_effects, collapse = " + "),
-#                         paste0("(1|", random_effects, ")", collapse = " + ")),
-#                       collapse = " + ")
-#
-#   # Initialize list to store model objects for each cluster
-#   cluster_models <- vector(mode = "list",
-#                            length = length(attributes(designmat)$dimnames[[2]]))
-#   names(cluster_models) <- attributes(designmat)$dimnames[[2]]
-#
-#   for (i in seq_along(attributes(designmat)$dimnames[[2]])) {
-#     test_cluster <- attributes(designmat)$dimnames[[2]][i]
-#
-#     # Make it a non-intercept model to get odds for each variable
-#     full_fm <- as.formula(paste0(c(paste0(test_cluster, " ~ 1 + ", contrast, " + "),
-#                                    model_rhs), collapse = ""))
-#
-#     full_model <- lme4::glmer(formula = full_fm, data = dataset,
-#                               family = binomial, nAGQ = 1, verbose = 0,
-#                               control = glmerControl(optimizer = "bobyqa"))
-#
-#     pvals <-lsmeans(full_model, pairwise ~ "phenotype | sample")
-#
-#     p_val_df <- summary(pvals$contrasts)
-#     p_val_df$cluster <- test_cluster
-#
-#     ci <- eff_size(pvals, sigma = sigma(full_model), edf = df.residual(full_model))
-#     ci_df <- summary(ci) %>%
-#     dplyr::select(sample, asymp.LCL, asymp.UCL)
-#     ci_df$cluster <- test_cluster
-#
-#     info_df <- left_join(p_val_df, ci_df, by = c("sample", "cluster"))
-#
-#     cluster_models[[i]] <- info_df
-#
-#   }
-#   return(cluster_models)
-# }
-#
-# # A function to make a forest plot for the differential abundance analyses
-# plot_contrasts <- function(d, x_breaks_by = 1, wrap_ncol = 6, y_ord = FALSE) {
-#   # if (y_ord != FALSE){
-#   #   d$cluster <- factor(d$cluster, levels = y_ord)
-#   # }
-#   ggplot() +
-#     annotate(
-#       geom = "rect",
-#       xmin = -Inf,
-#       xmax = Inf,
-#       ymin = seq(from = 1, to = length(unique(d$cluster)), by = 2) - 0.5,
-#       ymax = seq(from = 1, to = length(unique(d$cluster)), by = 2) + 0.5,
-#       alpha = 0.2
-#     ) +
-#     geom_vline(xintercept = 0, size = 0.2) +
-#     geom_errorbarh(
-#       data = d,
-#       mapping = aes(
-#         xmin = asymp.LCL, xmax = asymp.UCL, y = cluster,
-#         color = sig
-#       ),
-#       height = 0
-#     ) +
-#     geom_point(
-#       data = d,
-#       mapping = aes(
-#         x = estimate, y = cluster,
-#         color = sig
-#       ),
-#       size = 3
-#     ) +
-#     scale_color_manual(
-#       name = "P < 0.05",
-#       values = c("#FF8000", "#40007F", "grey60"),
-#       breaks = c("AA", "ANA")
-#     ) +
-#     scale_x_continuous(
-#       breaks = log(c(0.125, 0.5, 1, 2, 4)),
-#       labels = function(x) exp(x)
-#     ) +
-#     scale_y_discrete(
-#       # expand = c(0, 0),
-#       # breaks = seq(1, length(unique(d$cluster))),
-#       labels = levels(plot_df$cluster),
-#     ) +
-#     # annotation_logticks(sides = "b") +
-#     expand_limits(y = c(0.5, length(unique(d$cluster)) + 0.5)) +
-#     # facet_grid(~ GeneName) +
-#     facet_wrap(~ sample, ncol = wrap_ncol) +
-#     theme_classic() +
-#     theme(
-#       strip.text = element_text(face = "italic"),
-#       text = element_text(size = 15)
-#     ) +
-#     labs(
-#       title = "contrasts by sample",
-#       x = "Odds Ratio",
-#       y = "cluster"
-#     )
-# }
-#
-# clust_df <- reticulate::py$cell_info
-#
-# abund_info <- get_abund_info(clust_df, cluster = clust_df$leiden_labels,
-#                             contrast = "sample:phenotype",
-#                             random_effects = "id",
-#                             fixed_effects = c("sample", "phenotype"))
-#
-# plot_df <- do.call(rbind, abund_info)
-# plot_df$direction <- ifelse(plot_df$estimate > 0, "AA", "ANA")
-#
-#
-# plot_df$cluster <- as.numeric(gsub("cluster", "", plot_df$cluster))
-# plot_df$sig <- ifelse(plot_df$p.value < 0.05, plot_df$direction, "non_sig")
+library(lme4)
+library(ggplot2)
+library(emmeans)
+
+# A function to perform the mixed-effects logistic regression modelling, returning, p-values, odds-ratio and confidence intervals
+get_abund_info <- function(dataset, cluster, contrast, random_effects = NULL, fixed_effects = NULL){
+  # Generate design matrix from cluster assignments
+  cluster <- as.character(cluster)
+  designmat <- model.matrix(~ cluster + 0, data.frame(cluster = cluster))
+  dataset <- cbind(designmat, dataset)
+  # Create output list to hold results
+  res <- vector(mode = "list", length = length(unique(cluster)))
+  names(res) <- attributes(designmat)$dimnames[[2]]
+
+  # Create model formulas
+  model_rhs <- paste0(c(paste0(fixed_effects, collapse = " + "),
+                        paste0("(1|", random_effects, ")", collapse = " + ")),
+                      collapse = " + ")
+
+  # Initialize list to store model objects for each cluster
+  cluster_models <- vector(mode = "list",
+                           length = length(attributes(designmat)$dimnames[[2]]))
+  names(cluster_models) <- attributes(designmat)$dimnames[[2]]
+
+  for (i in seq_along(attributes(designmat)$dimnames[[2]])) {
+    test_cluster <- attributes(designmat)$dimnames[[2]][i]
+
+    # Make it a non-intercept model to get odds for each variable
+    full_fm <- as.formula(paste0(c(paste0(test_cluster, " ~ 1 + ", contrast, " + "),
+                                   model_rhs), collapse = ""))
+
+    full_model <- lme4::glmer(formula = full_fm, data = dataset,
+                              family = binomial, nAGQ = 1, verbose = 0,
+                              control = glmerControl(optimizer = "bobyqa"))
+
+    pvals <-lsmeans(full_model, pairwise ~ "phenotype | sample")
+
+    p_val_df <- summary(pvals$contrasts)
+    p_val_df$cluster <- test_cluster
+
+    ci <- eff_size(pvals, sigma = sigma(full_model), edf = df.residual(full_model))
+    ci_df <- summary(ci) %>%
+    dplyr::select(sample, asymp.LCL, asymp.UCL)
+    ci_df$cluster <- test_cluster
+
+    info_df <- left_join(p_val_df, ci_df, by = c("sample", "cluster"))
+
+    cluster_models[[i]] <- info_df
+
+  }
+  return(cluster_models)
+}
+
+
+clust_df <- reticulate::py$cell_info
+
+abund_info <- get_abund_info(clust_df, cluster = clust_df$leiden_labels,
+                            contrast = "sample:phenotype",
+                            random_effects = "id",
+                            fixed_effects = c("sample", "phenotype"))
+
+plot_df <- do.call(rbind, abund_info)
+plot_df$direction <- ifelse(plot_df$estimate > 0, "AA", "AC")
+
+
+plot_df$cluster <- as.numeric(gsub("cluster", "", plot_df$cluster))
+plot_df$sig <- ifelse(plot_df$p.value < 0.05, plot_df$direction, "non_sig")
+
 # cl_order <- c(9, 7, 3, 1, 5, 6, 8, 10, 2, 4)
 # plot_df$cluster <- factor(plot_df$cluster, levels = rev(cl_order))
-# plot_df$sample <- factor(plot_df$sample, levels = c("Pre", "Dil", "Ag"))
-# plot_contrasts(plot_df)
+plot_df$sample <- factor(plot_df$sample, levels = c("Bln", "Dil", "Ag"))
+plot_df <- plot_df[plot_df$sample != "Dil",]
+
+# Add annotation info
+annotations = c("1" = "CD8 T (GZMK)",
+                  "2" = "quiesCD8 T ",
+                  "3" = "CD8 T (CLIC3)",
+                  "4" = "Tgd (TRDC)",
+                  "5" = "CD8 T (EGR2)",
+                  "6" = "CD4 Treg (FOXP3)",
+                  "7" = "CD4 Th2 (GATA3)",
+                  "8" = "CD4 ThIFNR (ISG15)",
+                  "9" = "CD4 T (CD40LG)",
+                  "10" = "CD4 Th17 (RORA)")
+
+plot_df$annotation <- sapply(plot_df$cluster, function(x) annotations[as.character(x)])
+plot_df$annotation <- factor(plot_df$annotation, levels = rev(unlist(annotations, use.names = FALSE)))
+
+ggplot(plot_df[plot_df$sample != "Dil",], aes(x = estimate, y = annotation, color = sig)) +
+  geom_point(size = 3) +
+  geom_errorbarh(mapping = aes(xmin = asymp.LCL, xmax = asymp.UCL, y = annotation, color = sig),
+                 height = 0) +
+  geom_vline(xintercept = 0, size = 0.2) +
+  scale_color_manual(
+      name = "P < 0.05",
+      values = c("#FF8000", "#40007F", "grey60"),
+      breaks = c("AA", "AC")
+    ) +
+    scale_x_continuous(
+      breaks = log(c(0.125, 0.5, 1, 2, 4)),
+      labels = function(x) exp(x)
+    ) +
+    # scale_y_discrete(labels = levels(plot_df$cluster)) +
+  xlab("Odds Ratio") +
+  facet_wrap(~sample) +
+  theme_classic(base_size = 20)
 
 ```
 
@@ -1202,34 +1177,34 @@ expression in the Th2 cells is almost exclusively in the AA as shown below.
 
 ```{python, il9_plot}
 
-# cmap_dict = {"AA" : clr.LinearSegmentedColormap.from_list('gene_cmap', ["#d3d3d3" ,'#FF8000'], N=200),
-#              "ANA" : clr.LinearSegmentedColormap.from_list('gene_cmap', ["#d3d3d3" ,'#40007F'], N=200)}
-#
-# il9_fig, ax = plt.subplots(nrows = 1, ncols = 2, figsize = (10, 3))
-# ax = ax.ravel()
-# for num, pheno in enumerate(["AA", "ANA"]) :
-#     pheno_dat = t_cell_harmonized[t_cell_harmonized.obs["phenotype"] == pheno]
-#     _ = sc.pl.umap(pheno_dat, color = "IL9", cmap = cmap_dict[pheno], show = False, ax = ax[num],
-#                title = pheno)
-# _ = il9_fig.suptitle("IL9 expression")
-# il9_fig
+cmap_dict = {"AA" : clr.LinearSegmentedColormap.from_list('gene_cmap', ["#d3d3d3" ,'#FF8000'], N=200),
+             "AC" : clr.LinearSegmentedColormap.from_list('gene_cmap', ["#d3d3d3" ,'#40007F'], N=200)}
+
+il9_fig, ax = plt.subplots(nrows = 1, ncols = 2, figsize = (10, 3))
+ax = ax.ravel()
+for num, pheno in enumerate(["AA", "AC"]) :
+    pheno_dat = t_cell_harmonized[t_cell_harmonized.obs["phenotype"] == pheno]
+    _ = sc.pl.umap(pheno_dat, color = "IL9", cmap = cmap_dict[pheno], show = False, ax = ax[num],
+               title = pheno)
+_ = il9_fig.suptitle("IL9 expression")
+il9_fig
 ```
 
 We can look at the other Th2 genes in feature plots to show they really have a pathogenic effector phenotype
 ```{python, th2_plot}
 
-# colormap = clr.LinearSegmentedColormap.from_list('gene_cmap', ["#e0e0e1", '#4576b8', '#02024a'], N=200)
-#
-# feature_genes = ["IL4", "IL5", "IL9", "IL13", "IL17RB", "HPGDS",
-#                  "PTGDR2", "IL1RL1", "GATA3", "PPARG", "IRF4",
-#                  "IL1RL1"]
-#
-# fig, ax = plt.subplots(nrows = 4, ncols = 3, figsize = (7, 7))
-# ax = ax.ravel()
-# for num, gene in enumerate(feature_genes) :
-#     _ = sc.pl.umap(t_cell_harmonized, color=gene, cmap=colormap, show=False, ax = ax[num], title = gene)
-# fig.tight_layout()
-# fig
+colormap = clr.LinearSegmentedColormap.from_list('gene_cmap', ["#e0e0e1", '#4576b8', '#02024a'], N=200)
+
+feature_genes = ["IL4", "IL5", "IL9", "IL13", "IL17RB", "HPGDS",
+                 "PTGDR2", "IL1RL1", "GATA3", "PPARG", "IRF4",
+                 "IL1RL1"]
+
+fig, ax = plt.subplots(nrows = 4, ncols = 3, figsize = (7, 7))
+ax = ax.ravel()
+for num, gene in enumerate(feature_genes) :
+    _ = sc.pl.umap(t_cell_harmonized, color=gene, cmap=colormap, show=False, ax = ax[num], title = gene)
+fig.tight_layout()
+fig
 
 ```
 
@@ -1243,100 +1218,123 @@ All significant genes we found were up-regulated in the AA.
 
 ```{r de_res, warning = FALSE, message = FALSE}
 library(glue)
-#
-# count_mtx <- as.matrix(read.csv("/home/nealpsmith/projects/medoff/data/pseudobulk_t_cell_harmonized_counts.csv", row.names = 1))
-# meta_data <- read.csv("/home/nealpsmith/projects/medoff/data/pseudobulk_t_cell_harmonized_meta.csv", row.names = 1)
-# meta_data$phenotype <- factor(meta_data$phenotype, levels = c("ANA", "AA"))
-#
-# # Limit to just Ag samples
-# meta_data <- meta_data[meta_data$sample == "Ag",]
-# count_mtx <- count_mtx[,rownames(meta_data)]
-#
-# de_list <- list()
-# for (clust in unique(meta_data$cluster)){
-#   clust_meta <-meta_data[meta_data$cluster == clust,]
-#   clust_count <- count_mtx[,rownames(clust_meta)]
-#     if (nrow(clust_meta) > 5){
-#
-#       n_samp <- rowSums(clust_count != 0)
-#       clust_count <- clust_count[n_samp > round(nrow(clust_meta) / 2),]
-#
-#       stopifnot(rownames(clust_meta) == colnames(clust_count))
-#
-#       dds <- DESeqDataSetFromMatrix(countData = clust_count,
-#                                     colData = clust_meta,
-#                                     design = ~phenotype)
-#       dds <- DESeq(dds)
-#       res <- results(dds)
-#       plot_data <- as.data.frame(res)
-#       plot_data <- plot_data[!is.na(plot_data$padj),]
-#       plot_data$gene <- rownames(plot_data)
-#       de_list[[glue("clust_{clust}")]] <- plot_data
-#     }
-#
-# }
-#
-# aa_up <- lapply(names(de_list), function(x){
-#     data <- de_list[[x]]
-#     up_aa <- data[data$padj < 0.1 & data$log2FoldChange > 0,]$gene
-#     up_ana <- data[data$padj < 0.1 & data$log2FoldChange < 0,]$gene
-#     info_df <- data.frame("gene" = up_aa)
-#     if (nrow(info_df) > 0){
-#       info_df$cluster <- x
-#     }
-#   return(info_df)
-#   }) %>%
-#     do.call(rbind, .)
-#
-# aa_up
+
+count_mtx <- as.matrix(read.csv("/home/nealpsmith/projects/medoff/data/pseudobulk_t_cell_harmonized_counts.csv", row.names = 1))
+meta_data <- read.csv("/home/nealpsmith/projects/medoff/data/pseudobulk_t_cell_harmonized_meta.csv", row.names = 1)
+
+meta_data$phenotype <- as.character(meta_data$phenotype)
+meta_data$phenotype[meta_data$phenotype == "ANA"] <- "AC"
+meta_data$phenotype <- factor(meta_data$phenotype, levels = c("AC", "AA"))
+
+# Limit to just Ag samples
+meta_data <- meta_data[meta_data$sample == "Ag",]
+count_mtx <- count_mtx[,rownames(meta_data)]
+
+de_list <- list()
+for (clust in unique(meta_data$cluster)){
+  clust_meta <-meta_data[meta_data$cluster == clust,]
+  clust_count <- count_mtx[,rownames(clust_meta)]
+    if (nrow(clust_meta) > 5){
+
+      n_samp <- rowSums(clust_count != 0)
+      clust_count <- clust_count[n_samp > round(nrow(clust_meta) / 2),]
+
+      stopifnot(rownames(clust_meta) == colnames(clust_count))
+
+      dds <- DESeqDataSetFromMatrix(countData = clust_count,
+                                    colData = clust_meta,
+                                    design = ~phenotype)
+      dds <- DESeq(dds)
+      res <- results(dds)
+      plot_data <- as.data.frame(res)
+      plot_data <- plot_data[!is.na(plot_data$padj),]
+      plot_data$gene <- rownames(plot_data)
+      de_list[[glue("clust_{clust}")]] <- plot_data
+    }
+
+}
+
+aa_up <- lapply(names(de_list), function(x){
+    data <- de_list[[x]]
+    up_aa <- data[data$padj < 0.1 & data$log2FoldChange > 0,]$gene
+    up_ana <- data[data$padj < 0.1 & data$log2FoldChange < 0,]$gene
+    info_df <- data.frame("gene" = up_aa)
+    if (nrow(info_df) > 0){
+      info_df$cluster <- x
+    }
+  return(info_df)
+  }) %>%
+    do.call(rbind, .)
+
+# Remove the "clust" prefix to add annotations
+aa_up$cluster <- sapply(aa_up$cluster, function(x) sub("clust_", "", x))
+
+# Add the annotations (we used old cluster assignments here, that is why they are different than other sections)
+old_annotations <- c("7" = "CD8 T (GZMK)",
+                     "3" = "quiesCD8 T ",
+                     "1" = "CD8 T (CLIC3)",
+                     "5" = "Tgd (TRDC)",
+                     "9" = "CD8 T (EGR2)",
+                     "6" = "CD4 Treg (FOXP3)",
+                     "8" = "CD4 Th2 (GATA3)",
+                     "10" = "CD4 ThIFNR (ISG15)",
+                     "2" = "CD4 T (CD40LG)",
+                     "4" = "CD4 Th17 (RORA)")
+
+aa_up$annotation <- sapply(aa_up$cluster, function(x) old_annotations[as.character(x)])
+aa_up <- aa_up[,c("gene", "annotation")]
+
+aa_up
 ```
 
 To visualize these, we used violin plots comparing the AA and AC expression distributions in the particular clusters
 
 ```{python de_violins}
-# t_cell_ag = t_cell_harmonized[t_cell_harmonized.obs["sample"] == "Ag"]
-#
-# plot_info = pd.DataFrame({"gene" : ["IL2RA", "CTLA4", "MAL", "GZMB", "CCR7", "SOCS3"],
-#                           "clust" : ["8", "8", "2", "5", "3", "3"]})
-#
-# fig, ax = plt.subplots(ncols=plot_info.shape[0], figsize = (12, 2))
-# ax = ax.ravel()
-#
-# for num, indx in enumerate(plot_info.index.values) :
-#     gene = plot_info.loc[indx, "gene"]
-#     in_clust = plot_info.loc[indx, "clust"]
-#     t_cell_gene_data = pd.DataFrame.sparse.from_spmatrix(t_cell_ag[:, gene].X, columns=[gene],
-#                                                       index=t_cell_ag.obs_names).sparse.to_dense()
-#     t_cell_gene_data = t_cell_gene_data.merge(t_cell_ag.obs[["id", "phenotype", "leiden_labels"]], how="left",
-#                                         left_index=True, right_index=True)
-#     t_cell_gene_data = t_cell_gene_data[t_cell_gene_data["leiden_labels"] == in_clust]
-#
-#     # Get medians
-#     medians = [np.median(t_cell_gene_data[t_cell_gene_data["phenotype"] == "AA"][gene]),
-#                np.median(t_cell_gene_data[t_cell_gene_data["phenotype"] == "ANA"][gene])]
-#
-#     # Make the plot
-#     sns.violinplot(x="phenotype", y=gene, hue="phenotype", data=t_cell_gene_data, inner=None,
-#                    palette={"AA": "#FF8000", "ANA": "#40007F"}, ax=ax[num], cut=0, alpha=0.5, dodge = False)
-#     for violin in ax[num].collections:
-#         violin.set_alpha(0.5)
-#     sns.stripplot(x="phenotype", y=gene, hue="phenotype", data=t_cell_gene_data,
-#                   palette={"AA": "grey", "ANA": "grey"},
-#                   dodge=False, size=2, ax=ax[num], zorder=0)
-#     # ax[num].scatter(x = [0, 1], y = medians, marker = "_", s = 600, c = "black")
-#     _ = ax[num].get_legend().remove()
-#     _ = ax[num].set_xlabel("")
-#     _ = ax[num].set_ylabel("log(CPM)")
-#     _ = ax[num].set_title(f"{gene} : t_cell {in_clust}")
-#
-# fig.tight_layout()
-# fig
+t_cell_ag = t_cell_harmonized[t_cell_harmonized.obs["sample"] == "Ag"]
+
+plot_info = pd.DataFrame({"gene" : ["IL2RA", "CTLA4", "MAL", "GZMB", "CCR7", "SOCS3"],
+                          "clust" : ["7", "7", "9", "4", "2", "2"]})
+
+fig, ax = plt.subplots(ncols=plot_info.shape[0], figsize = (12, 2))
+ax = ax.ravel()
+
+for num, indx in enumerate(plot_info.index.values) :
+    gene = plot_info.loc[indx, "gene"]
+    in_clust = plot_info.loc[indx, "clust"]
+    t_cell_gene_data = pd.DataFrame.sparse.from_spmatrix(t_cell_ag[:, gene].X, columns=[gene],
+                                                      index=t_cell_ag.obs_names).sparse.to_dense()
+    t_cell_gene_data = t_cell_gene_data.merge(t_cell_ag.obs[["id", "phenotype", "leiden_labels"]], how="left",
+                                        left_index=True, right_index=True)
+    t_cell_gene_data = t_cell_gene_data[t_cell_gene_data["leiden_labels"] == in_clust]
+
+    # Get medians
+    medians = [np.median(t_cell_gene_data[t_cell_gene_data["phenotype"] == "AA"][gene]),
+               np.median(t_cell_gene_data[t_cell_gene_data["phenotype"] == "AC"][gene])]
+
+    # Make the plot
+    sns.violinplot(x="phenotype", y=gene, hue="phenotype", data=t_cell_gene_data, inner=None,
+                   palette={"AA": "#FF8000", "AC": "#40007F"}, ax=ax[num], cut=0, alpha=0.5, dodge = False)
+    for violin in ax[num].collections:
+        violin.set_alpha(0.5)
+    sns.stripplot(x="phenotype", y=gene, hue="phenotype", data=t_cell_gene_data,
+                  palette={"AA": "grey", "AC": "grey"},
+                  dodge=False, size=2, ax=ax[num], zorder=0)
+    # ax[num].scatter(x = [0, 1], y = medians, marker = "_", s = 600, c = "black")
+    _ = ax[num].get_legend().remove()
+    _ = ax[num].set_xlabel("")
+    _ = ax[num].set_ylabel("log(CPM)")
+    _ = ax[num].set_title(f"{gene} : t_cell {in_clust}")
+
+fig.tight_layout()
+fig
 
 ```
 
+We were also curious about the differences between the baseline and allergen timepoints. We used a simple model of
+gene ~ sample where sample was a factor with 2 levels (Bln, Ag) indicating which condition the sample was from. When we
+compare the number of DEGs from Bln:Ag between AA and AC, we see that AA has significantly more.
 
-
-```{r pre_vs_ag, warning = FALSE, message = FALSE}
+```{r pre_vs_ag, warning = FALSE, message = FALSE, fig.height = 5, fig.width = 8}
 
 count_mtx <- as.matrix(read.csv(
   "/home/nealpsmith/projects/medoff/data/pseudobulk_t_cell_harmonized_counts.csv",
@@ -1400,12 +1398,26 @@ de_counts$leiden_labels <- factor(rownames(de_counts), levels = rownames(de_coun
 plot_df <- reshape2::melt(de_counts, id.vars = "leiden_labels") %>%
   mutate(value = ifelse(variable == "AC", -value, value))
 
-ggplot(plot_df, aes(x = leiden_labels, y = value, group = variable, fill = variable)) +
+# Add the annotations (we used old cluster assignments here, that is why they are different than other sections)
+old_annotations <- c("7" = "CD8 T (GZMK)",
+                     "3" = "quiesCD8 T ",
+                     "1" = "CD8 T (CLIC3)",
+                     "5" = "Tgd (TRDC)",
+                     "9" = "CD8 T (EGR2)",
+                     "6" = "CD4 Treg (FOXP3)",
+                     "8" = "CD4 Th2 (GATA3)",
+                     "10" = "CD4 ThIFNR (ISG15)",
+                     "2" = "CD4 T (CD40LG)",
+                     "4" = "CD4 Th17 (RORA)")
+
+plot_df$annotation <- sapply(plot_df$leiden_labels, function(x) old_annotations[as.character(x)])
+
+ggplot(plot_df, aes(x = annotation, y = value, group = variable, fill = variable)) +
   geom_bar(stat = "identity") + coord_flip() +
   scale_fill_manual(values = c("#FF8000", "#40007F")) +
   scale_y_continuous(labels = abs) +
-  ggtitle(glue("Number of DE genes Pre vs. Ag")) +
+  ggtitle(glue("Number of DE genes Bln vs. Ag")) +
   ylab("# of DE genes") + xlab("") +
-  theme_bw(base_size = 20)
+  theme_classic(base_size = 18)
 
 ```
