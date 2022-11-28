@@ -79,6 +79,8 @@ def _collect_samples(W, resolution, n_cells, resamp_size, true_class, random_sta
     return adjusted_rand_score(true_class, new_class)
 ```
 
+<img src="figure_5_files/figure-markdown_github/rand_func-1.png" width="768" />
+
 ``` python
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -93,11 +95,6 @@ mnp_harmonized = pg.read_input("/home/nealpsmith/projects/medoff/data/anndata_fo
 # plot_df = plot_df.reset_index()
 # plot_df = plot_df.melt(id_vars="index")
 # plot_df.to_csv(os.path.join(file_path(), "data", "ari_plots", "myeloid_harmonized_ARI.csv"))
-```
-
-    ## 2022-11-28 14:04:40,244 - pegasus - INFO - Time spent on 'read_input' = 1.33s.
-
-``` python
 plot_df = pd.read_csv("/home/nealpsmith/projects/medoff/data/ari_plots/myeloid_harmonized_ARI.csv")
 fig, ax = plt.subplots(1)
 _ = sns.boxplot(x="index", y="value", data=plot_df, ax = ax)
@@ -114,7 +111,7 @@ fig.tight_layout()
 fig
 ```
 
-<img src="/home/nealpsmith/publication_githubs/airway_allergic_asthma/figure_scripts/figure_5/figure_5_files/figure-markdown_github/rand_plot-1.png" width="672" />
+<img src="figure_5_files/figure-markdown_github/rand_plot-3.png" width="672" />
 
 Based on this rand index approach, we can see that a leiden resolution of 1.5 is the highest resolution where the median ARI of all iterations was &gt; 0.9. Given this, we started our clustering at this resolution.
 
@@ -128,7 +125,7 @@ colormap = clr.LinearSegmentedColormap.from_list('gene_cmap', ["#d3d3d3" ,'#482c
 sc.pl.umap(mnp_harmonized, color = ["leiden_labels"], legend_loc = "on data")
 ```
 
-<img src="/home/nealpsmith/publication_githubs/airway_allergic_asthma/figure_scripts/figure_5/figure_5_files/figure-markdown_github/clustering-3.png" width="672" /><img src="/home/nealpsmith/publication_githubs/airway_allergic_asthma/figure_scripts/figure_5/figure_5_files/figure-markdown_github/clustering-4.png" width="672" />
+<img src="figure_5_files/figure-markdown_github/clustering-5.png" width="672" /><img src="figure_5_files/figure-markdown_github/clustering-6.png" width="672" />
 
 After visually assessing many genes and through expert annotation, we could see that there was a small cluster of CLEC9A+ cDC1 cells among cluster 3. Given we know that cDC1s have a distinct biological function, we manually subsetted these cells to represent their own cluster. We can defend this choice by scoring cells using a cDC1 gene set that was published by Villani et al. Cell 2017.
 
@@ -171,7 +168,7 @@ mnp_harmonized.obs["dc1_score"] = score_cells(mnp_harmonized, dc1_genes)
 sc.pl.umap(mnp_harmonized, color="dc1_score", cmap = colormap)
 ```
 
-<img src="/home/nealpsmith/publication_githubs/airway_allergic_asthma/figure_scripts/figure_5/figure_5_files/figure-markdown_github/DC1_scoring-7.png" width="672" /><img src="/home/nealpsmith/publication_githubs/airway_allergic_asthma/figure_scripts/figure_5/figure_5_files/figure-markdown_github/DC1_scoring-8.png" width="672" />
+<img src="figure_5_files/figure-markdown_github/DC1_scoring-9.png" width="672" /><img src="figure_5_files/figure-markdown_github/DC1_scoring-10.png" width="672" />
 
 Additionally, after expert annotation, we did not think cluster 10 represented any unique set of cells and seemed to share all major markers with cluster 1. Therefore, we refined our clustering by combining clusters 1 and 10 and manually segregating the cDC1 cells. Below is the final clustering solution. Cluster numbers were also adjusted to have them ordered by the phenotypic similarities (the order they fall in the marker heatmap below)
 
@@ -179,7 +176,7 @@ Additionally, after expert annotation, we did not think cluster 10 represented a
 sc.pl.umap(mnp_harmonized, color = "new_clusters", legend_loc = "on data")
 ```
 
-<img src="/home/nealpsmith/publication_githubs/airway_allergic_asthma/figure_scripts/figure_5/figure_5_files/figure-markdown_github/dc1_subsetting-11.png" width="672" /><img src="/home/nealpsmith/publication_githubs/airway_allergic_asthma/figure_scripts/figure_5/figure_5_files/figure-markdown_github/dc1_subsetting-12.png" width="672" />
+<img src="figure_5_files/figure-markdown_github/dc1_subsetting-13.png" width="672" /><img src="figure_5_files/figure-markdown_github/dc1_subsetting-14.png" width="672" />
 
 # Marker genes
 
@@ -204,7 +201,7 @@ top_gene_df = top_gene_df.rename(columns = {clust : "cluster_{clust}".format(clu
 top_gene_df = top_gene_df.replace(np.nan, "")
 ```
 
-<img src="/home/nealpsmith/publication_githubs/airway_allergic_asthma/figure_scripts/figure_5/figure_5_files/figure-markdown_github/DE_analysis-15.png" width="672" />
+<img src="figure_5_files/figure-markdown_github/DE_analysis-17.png" width="672" />
 
 ``` r
 library(knitr)
@@ -1145,7 +1142,7 @@ top_gene_df = top_gene_df.rename(columns = {clust : "cluster_{clust}".format(clu
 top_gene_df = top_gene_df.replace(np.nan, "")
 ```
 
-<img src="/home/nealpsmith/publication_githubs/airway_allergic_asthma/figure_scripts/figure_5/figure_5_files/figure-markdown_github/pseudobulk-1.png" width="672" />
+<img src="figure_5_files/figure-markdown_github/pseudobulk-1.png" width="672" />
 
 ``` r
 kable(reticulate::py$top_gene_df, caption = "genes with AUC> 0.75 or pseudo q < 0.05")
@@ -2078,7 +2075,7 @@ _ = plt.title("top genes for every cluster")
 plt.show()
 ```
 
-<img src="/home/nealpsmith/publication_githubs/airway_allergic_asthma/figure_scripts/figure_5/figure_5_files/figure-markdown_github/heatmap1-1.png" width="960" /><img src="/home/nealpsmith/publication_githubs/airway_allergic_asthma/figure_scripts/figure_5/figure_5_files/figure-markdown_github/heatmap1-2.png" width="960" />
+<img src="figure_5_files/figure-markdown_github/heatmap1-1.png" width="960" /><img src="figure_5_files/figure-markdown_github/heatmap1-2.png" width="960" />
 
 To make things more readable, we also made a heatmap where we kept the columns clustered such that phenotypically similar clusters were grouped together, but manually ordered the rows.
 
@@ -2151,7 +2148,7 @@ _ = plt.title("top genes for every cluster")
 plt.show()
 ```
 
-<img src="/home/nealpsmith/publication_githubs/airway_allergic_asthma/figure_scripts/figure_5/figure_5_files/figure-markdown_github/ordered_heatmap-5.png" width="960" /><img src="/home/nealpsmith/publication_githubs/airway_allergic_asthma/figure_scripts/figure_5/figure_5_files/figure-markdown_github/ordered_heatmap-6.png" width="960" />
+<img src="figure_5_files/figure-markdown_github/ordered_heatmap-5.png" width="960" /><img src="figure_5_files/figure-markdown_github/ordered_heatmap-6.png" width="960" />
 
 Finally, we wanted to make a publication-ready figure using the wonderful `ComplexHeatmap` package, where we can add some annotations for each cluster and add spaces between clusters to make it even more readable.
 
@@ -2243,7 +2240,7 @@ draw(heatmap_list, heatmap_legend_list =lgd_list, padding = unit(c(0.5, 0.5, 2, 
      cluster_row_slices = FALSE)
 ```
 
-![](/home/nealpsmith/publication_githubs/airway_allergic_asthma/figure_scripts/figure_5/figure_5_files/figure-markdown_github/nice_heatmap-9.png)
+![](figure_5_files/figure-markdown_github/nice_heatmap-9.png)
 
 Beyond looking at unbiased markers, we wanted to use legacy knowledge to better understand the biological role of our clusters. Using dot plots, we can see some cannonical genes expressed by the clusters.
 
@@ -2271,9 +2268,165 @@ for key in MNP_gene_dict.keys() :
     plt.close()
 ```
 
-<img src="/home/nealpsmith/publication_githubs/airway_allergic_asthma/figure_scripts/figure_5/figure_5_files/figure-markdown_github/dot_plots-1.png" width="428" /><img src="/home/nealpsmith/publication_githubs/airway_allergic_asthma/figure_scripts/figure_5/figure_5_files/figure-markdown_github/dot_plots-2.png" width="747" /><img src="/home/nealpsmith/publication_githubs/airway_allergic_asthma/figure_scripts/figure_5/figure_5_files/figure-markdown_github/dot_plots-3.png" width="428" /><img src="/home/nealpsmith/publication_githubs/airway_allergic_asthma/figure_scripts/figure_5/figure_5_files/figure-markdown_github/dot_plots-4.png" width="570" /><img src="/home/nealpsmith/publication_githubs/airway_allergic_asthma/figure_scripts/figure_5/figure_5_files/figure-markdown_github/dot_plots-5.png" width="960" />
+<img src="figure_5_files/figure-markdown_github/dot_plots-1.png" width="428" /><img src="figure_5_files/figure-markdown_github/dot_plots-2.png" width="747" /><img src="figure_5_files/figure-markdown_github/dot_plots-3.png" width="428" /><img src="figure_5_files/figure-markdown_github/dot_plots-4.png" width="570" /><img src="figure_5_files/figure-markdown_github/dot_plots-5.png" width="960" />
+
+After inspecting all of the top marker genes for each cluster, we assigned the clusters specific annotations, which are shown below.
+
+``` python
+
+annotation_dict = {"1" : "MC1 (CXCL10)",
+                   "2" : "MC2 (SPP1)",
+                   "3" : "MC3 (AREG)",
+                   "4" : "Mac1 (FABP4)",
+                   "5" : "quiesMac",
+                   "6" : "quiesMC",
+                   "7" : "Cycling (PCLAF)",
+                   "8" : "MC4 (CCR2)",
+                   "9" : "Mac2 (A2M)",
+                   "10" : "pDC (TCF4)",
+                   "11" : "migDC (CCR7)",
+                   "12" : "DC1 (CLEC9A)",
+                   "13" : "DC2 (CD1C)",
+                   "14" : "AS DC (AXL)"}
+
+
+color_dict = dict(zip(annotation_dict.values(), mnp_harmonized.uns["new_clusters_colors"]))
+
+mnp_harmonized.obs["annotation"] = [annotation_dict[c] for c in mnp_harmonized.obs["new_clusters"]]
+figure = sc.pl.umap(mnp_harmonized, color = ["annotation"],
+                    palette = color_dict, return_fig = True, show = False, legend_loc = "on data")
+figure.set_size_inches(8, 8)
+figure
+```
+
+<img src="figure_5_files/figure-markdown_github/annotations-11.png" width="768" />
 
 # Differential abundance analysis
+
+We can look for abundance differences between groups and conditions. First, we used stacked bars to assess the amount of the total cells each MNP cluster represented in every sample.
+
+``` python
+cell_info = mnp_harmonized.obs
+all_cell_info = pg.read_input("/home/nealpsmith/projects/medoff/data/anndata_for_publication/all_data_harmonized.h5ad")
+all_cell_info = all_cell_info.obs
+```
+
+<img src="figure_5_files/figure-markdown_github/cell_info-13.png" width="768" />
+
+``` r
+cols <- c('MC1 (CXCL10)'= '#ffbb78',
+ 'MC2 (SPP1)'= '#aa40fc',
+ 'MC3 (AREG)'= '#8c564b',
+ 'Mac1 (FABP4)'= '#e377c2',
+ 'quiesMac'= '#ff9896',
+ 'quiesMC'= '#ff7f0e',
+ 'Cycling (PCLAF)'= '#c5b0d5',
+ 'MC4 (CCR2)'= '#1f77b4',
+ 'Mac2 (A2M)'= '#b5bd61',
+ 'pDC (TCF4)'= '#d62728',
+ 'migDC (CCR7)'= '#17becf',
+ 'DC1 (CLEC9A)'= '#aec7e8',
+ 'DC2 (CD1C)'= '#279e68',
+ 'AS DC (AXL)'= '#98df8a')
+
+all_cell_info <- reticulate::py$all_cell_info
+mnp_info <- reticulate::py$cell_info
+
+
+cells_per_donor <- all_cell_info %>%
+  dplyr::select(id, sample, phenotype) %>%
+  group_by(id, sample, phenotype) %>%
+  summarise(n_total = n())
+```
+
+    ## `summarise()` has grouped output by 'id', 'sample'. You can override using the `.groups` argument.
+
+``` r
+# Need to fix old nomenclature
+cells_per_donor$sample <- as.character(cells_per_donor$sample)
+cells_per_donor$sample[cells_per_donor$sample == "Pre"] <- "Bln"
+cells_per_donor$phenotype <- as.character(cells_per_donor$phenotype)
+cells_per_donor$phenotype[cells_per_donor$phenotype == "ANA"] <- "AC"
+
+mnp_counts <- mnp_info %>%
+  dplyr::select(id, sample, annotation, phenotype) %>%
+  group_by(id, sample, annotation, phenotype) %>%
+  summarise(n_cells = n())
+```
+
+    ## `summarise()` has grouped output by 'id', 'sample', 'annotation'. You can override using the `.groups` argument.
+
+``` r
+plot_df <- mnp_counts %>%
+  dplyr::left_join(cells_per_donor, by = c("id", "sample", "phenotype")) %>%
+  mutate(perc_cells = n_cells / n_total * 100)
+
+plot_df <- plot_df[plot_df$sample != "Dil",]
+plot_df$sample <- as.character(plot_df$sample)
+plot_df$sample[plot_df$sample == "Pre"] <- "Bln"
+plot_df$sample <- factor(plot_df$sample, levels = c("Bln", "Ag"))
+plot_df$annotation <- factor(plot_df$annotation)
+
+ggplot(plot_df, aes(x = sample, fill = annotation, y = perc_cells)) + geom_bar(stat = "identity") +
+  facet_grid(~id) +
+  ylab("percent") +
+  scale_fill_manual(values = cols) +
+  scale_y_continuous(limits = c(0, 60)) +
+  theme_classic(base_size = 20)
+```
+
+![](figure_5_files/figure-markdown_github/stacked_bars-15.png)
+
+Below, we are looking at the distributions of percents and total number of MNP cells for our disease groups. The percents represent the percent of each MNP cell subcluster as a function of all MNP cells.
+
+``` r
+plot_df <- mnp_counts %>%
+  group_by(id, sample) %>%
+  mutate(total_cells = sum(n_cells)) %>%
+  mutate(percent = n_cells / total_cells * 100)
+
+
+order <- plot_df %>%
+  group_by(annotation) %>%
+  summarise(n_total = sum(n_cells)) %>%
+  arrange(desc(n_total)) %>%
+  .$annotation
+
+plot_df$annotation <- factor(plot_df$annotation, levels = order)
+
+plot_df$sample <- as.character(plot_df$sample)
+plot_df <- plot_df[plot_df$sample != "Dil",]
+plot_df$sample <- factor(plot_df$sample, levels = c("Bln", "Ag"))
+plot_df$phenotype <- factor(plot_df$phenotype, levels = c("AC", "AA"))
+
+ggplot(plot_df, aes(x = annotation, y = percent, fill = phenotype)) +
+        geom_boxplot() +
+        scale_fill_manual(values = c("#40007F", "#FF8000")) +
+        scale_y_log10() +
+        annotation_logticks(side = "l") +
+        facet_wrap(~sample) +
+        ylab("Percent of MNP cells") +
+        xlab("cluster") +
+        theme_classic(base_size = 20) +
+        theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+```
+
+![](figure_5_files/figure-markdown_github/perc_boxplots-1.png)
+
+``` r
+ggplot(plot_df, aes(x = annotation, y = n_cells, fill = phenotype)) +
+        geom_boxplot() +
+        scale_fill_manual(values = c("#40007F", "#FF8000")) +
+        scale_y_log10() +
+        annotation_logticks(side = "l") +
+        facet_wrap(~sample) +
+        ylab("Number of MNP cells") +
+        xlab("cluster") +
+        theme_classic(base_size = 20) +
+        theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+```
+
+![](figure_5_files/figure-markdown_github/n_cells-1.png)
 
 Next we wanted to evaluate which clusters were associated with particular group:condition combinations. First, we can do this in a qualitative way, looking at the UMAP embedding density of the cells that are in our different categorical groups. The takeaway from these plots are that the cells are not uniformly distributed across the categorical groups and there are some biases.
 
@@ -2287,17 +2440,11 @@ dens_plot.set_size_inches(7, 5)
 dens_plot
 ```
 
-<img src="/home/nealpsmith/publication_githubs/airway_allergic_asthma/figure_scripts/figure_5/figure_5_files/figure-markdown_github/embedding_density-11.png" width="672" />
+<img src="figure_5_files/figure-markdown_github/embedding_density-1.png" width="672" />
 
 To look at the data in a more quantitative way, we used a mixed-effects association logistic regression model similar to that described by Fonseka et al. We fit a logistic regression modelfor each cell cluster. Each cluster was modelled independently as follows : `cluster ~ 1 + condition:group + condition + group + (1 | id)`
 
 The least-squares means of the factors in the model were calculated and all pairwise contrasts between the means of the groups at each condition (e.g. AA vs AC within baseline, AA vs AC within allergen, etc.) were compared. The OR with confidence interval for each sample/condition combination were plotted.
-
-``` python
-cell_info = mnp_harmonized.obs
-```
-
-<img src="/home/nealpsmith/publication_githubs/airway_allergic_asthma/figure_scripts/figure_5/figure_5_files/figure-markdown_github/cell_info-13.png" width="672" />
 
 ``` r
 library(lme4)
@@ -2353,67 +2500,6 @@ get_abund_info <- function(dataset, cluster, contrast, random_effects = NULL, fi
   return(cluster_models)
 }
 
-# A function to make a forest plot for the differential abundance analyses
-plot_contrasts <- function(d, x_breaks_by = 1, wrap_ncol = 6, y_ord = FALSE) {
-  # if (y_ord != FALSE){
-  #   d$cluster <- factor(d$cluster, levels = y_ord)
-  # }
-  ggplot() +
-    annotate(
-      geom = "rect",
-      xmin = -Inf,
-      xmax = Inf,
-      ymin = seq(from = 1, to = length(unique(d$cluster)), by = 2) - 0.5,
-      ymax = seq(from = 1, to = length(unique(d$cluster)), by = 2) + 0.5,
-      alpha = 0.2
-    ) +
-    geom_vline(xintercept = 0, size = 0.2) +
-    geom_errorbarh(
-      data = d,
-      mapping = aes(
-        xmin = asymp.LCL, xmax = asymp.UCL, y = cluster,
-        color = sig
-      ),
-      height = 0
-    ) +
-    geom_point(
-      data = d,
-      mapping = aes(
-        x = estimate, y = cluster,
-        color = sig
-      ),
-      size = 3
-    ) +
-    scale_color_manual(
-      name = "P < 0.05",
-      values = c("#FF8000", "#40007F", "grey60"),
-      breaks = c("AA", "ANA")
-    ) +
-    scale_x_continuous(
-      breaks = log(c(0.125, 0.5, 1, 2, 4)),
-      labels = function(x) exp(x)
-    ) +
-    scale_y_discrete(
-      # expand = c(0, 0),
-      # breaks = seq(1, length(unique(d$cluster))),
-      labels = levels(plot_df$cluster),
-    ) +
-    # annotation_logticks(sides = "b") +
-    expand_limits(y = c(0.5, length(unique(d$cluster)) + 0.5)) +
-    # facet_grid(~ GeneName) +
-    facet_wrap(~ sample, ncol = wrap_ncol) +
-    theme_classic() +
-    theme(
-      strip.text = element_text(face = "italic"),
-      text = element_text(size = 15)
-    ) +
-    labs(
-      title = "contrasts by sample",
-      x = "Odds Ratio",
-      y = "cluster"
-    )
-}
-
 clust_df <- reticulate::py$cell_info
 
 abund_info <- get_abund_info(clust_df, cluster = clust_df$new_clusters,
@@ -2422,14 +2508,50 @@ abund_info <- get_abund_info(clust_df, cluster = clust_df$new_clusters,
                             fixed_effects = c("sample", "phenotype"))
 
 plot_df <- do.call(rbind, abund_info)
-plot_df$direction <- ifelse(plot_df$estimate > 0, "AA", "ANA")
+plot_df$direction <- ifelse(plot_df$estimate > 0, "AA", "AC")
 
 plot_df$cluster <- as.numeric(gsub("cluster", "", plot_df$cluster))
 plot_df$sig <- ifelse(plot_df$p.value < 0.05, plot_df$direction, "non_sig")
-cl_order <- c(11, 5, 6, 7, 13, 2, 14, 1, 8, 4, 9, 10, 3, 12)
-plot_df$cluster <- factor(plot_df$cluster, levels = rev(cl_order))
-plot_df$sample <- factor(plot_df$sample, levels = c("Pre", "Dil", "Ag"))
-plot_contrasts(plot_df)
+plot_df$sample <- factor(plot_df$sample, levels = c("Bln", "Dil", "Ag"))
+
+
+annotations = c("1" = "MC1 (CXCL10)",
+                   "2" = "MC2 (SPP1)",
+                   "3" = "MC3 (AREG)",
+                   "4" = "Mac1 (FABP4)",
+                   "5" = "quiesMac",
+                   "6" = "quiesMC",
+                   "7" = "Cycling (PCLAF)",
+                   "8" = "MC4 (CCR2)",
+                   "9" = "Mac2 (A2M)",
+                   "10" = "pDC (TCF4)",
+                   "11" = "migDC (CCR7)",
+                   "12" = "DC1 (CLEC9A)",
+                   "13" = "DC2 (CD1C)",
+                   "14" = "AS DC (AXL)")
+
+plot_df$annotation <- sapply(plot_df$cluster, function(x) annotations[as.character(x)])
+plot_df$annotation <- factor(plot_df$annotation, levels = rev(unlist(annotations, use.names = FALSE)))
+
+
+ggplot(plot_df[plot_df$sample != "Dil",], aes(x = estimate, y = annotation, color = sig)) +
+  geom_point(size = 3) +
+  geom_errorbarh(mapping = aes(xmin = asymp.LCL, xmax = asymp.UCL, y = annotation, color = sig),
+                 height = 0) +
+  geom_vline(xintercept = 0, size = 0.2) +
+  scale_color_manual(
+      name = "P < 0.05",
+      values = c("#FF8000", "#40007F", "grey60"),
+      breaks = c("AA", "AC")
+    ) +
+    scale_x_continuous(
+      breaks = log(c(0.125, 0.5, 1, 2, 4)),
+      labels = function(x) exp(x)
+    ) +
+    # scale_y_discrete(labels = levels(plot_df$cluster)) +
+  xlab("Odds Ratio") +
+  facet_wrap(~sample) +
+  theme_classic(base_size = 20)
 ```
 
-![](/home/nealpsmith/publication_githubs/airway_allergic_asthma/figure_scripts/figure_5/figure_5_files/figure-markdown_github/diff_abund-15.png)
+![](figure_5_files/figure-markdown_github/diff_abund-3.png)

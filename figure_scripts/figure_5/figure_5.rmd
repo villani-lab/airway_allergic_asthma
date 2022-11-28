@@ -1,6 +1,6 @@
 ---
 title: "Figure 5"
-output: html_document
+output: rmarkdown::github_document
 ---
 
 ```{r message=FALSE}
@@ -623,8 +623,8 @@ annotation_dict = {"1" : "MC1 (CXCL10)",
                    "10" : "pDC (TCF4)",
                    "11" : "migDC (CCR7)",
                    "12" : "DC1 (CLEC9A)",
-"13" : "DC2 (CD1C)",
-"14" : "AS DC (AXL)"}
+                   "13" : "DC2 (CD1C)",
+                   "14" : "AS DC (AXL)"}
 
 
 color_dict = dict(zip(annotation_dict.values(), mnp_harmonized.uns["new_clusters_colors"]))
@@ -636,11 +636,128 @@ figure.set_size_inches(8, 8)
 figure
 
 ```
-```
+
 
 
 
 #Differential abundance analysis
+
+We can look for abundance differences between groups and conditions. First, we used stacked bars to assess the
+amount of the total cells each MNP cluster represented in every sample.
+
+```{python cell_info}
+cell_info = mnp_harmonized.obs
+all_cell_info = pg.read_input("/home/nealpsmith/projects/medoff/data/anndata_for_publication/all_data_harmonized.h5ad")
+all_cell_info = all_cell_info.obs
+```
+
+
+```{r stacked_bars, fig.width = 12, fig.height = 4}
+
+cols <- c('MC1 (CXCL10)'= '#ffbb78',
+ 'MC2 (SPP1)'= '#aa40fc',
+ 'MC3 (AREG)'= '#8c564b',
+ 'Mac1 (FABP4)'= '#e377c2',
+ 'quiesMac'= '#ff9896',
+ 'quiesMC'= '#ff7f0e',
+ 'Cycling (PCLAF)'= '#c5b0d5',
+ 'MC4 (CCR2)'= '#1f77b4',
+ 'Mac2 (A2M)'= '#b5bd61',
+ 'pDC (TCF4)'= '#d62728',
+ 'migDC (CCR7)'= '#17becf',
+ 'DC1 (CLEC9A)'= '#aec7e8',
+ 'DC2 (CD1C)'= '#279e68',
+ 'AS DC (AXL)'= '#98df8a')
+
+all_cell_info <- reticulate::py$all_cell_info
+mnp_info <- reticulate::py$cell_info
+
+
+cells_per_donor <- all_cell_info %>%
+  dplyr::select(id, sample, phenotype) %>%
+  group_by(id, sample, phenotype) %>%
+  summarise(n_total = n())
+
+# Need to fix old nomenclature
+cells_per_donor$sample <- as.character(cells_per_donor$sample)
+cells_per_donor$sample[cells_per_donor$sample == "Pre"] <- "Bln"
+cells_per_donor$phenotype <- as.character(cells_per_donor$phenotype)
+cells_per_donor$phenotype[cells_per_donor$phenotype == "ANA"] <- "AC"
+
+mnp_counts <- mnp_info %>%
+  dplyr::select(id, sample, annotation, phenotype) %>%
+  group_by(id, sample, annotation, phenotype) %>%
+  summarise(n_cells = n())
+
+
+plot_df <- mnp_counts %>%
+  dplyr::left_join(cells_per_donor, by = c("id", "sample", "phenotype")) %>%
+  mutate(perc_cells = n_cells / n_total * 100)
+
+plot_df <- plot_df[plot_df$sample != "Dil",]
+plot_df$sample <- as.character(plot_df$sample)
+plot_df$sample[plot_df$sample == "Pre"] <- "Bln"
+plot_df$sample <- factor(plot_df$sample, levels = c("Bln", "Ag"))
+plot_df$annotation <- factor(plot_df$annotation)
+
+ggplot(plot_df, aes(x = sample, fill = annotation, y = perc_cells)) + geom_bar(stat = "identity") +
+  facet_grid(~id) +
+  ylab("percent") +
+  scale_fill_manual(values = cols) +
+  scale_y_continuous(limits = c(0, 60)) +
+  theme_classic(base_size = 20)
+
+```
+
+
+Below, we are looking at the distributions of percents and total number of MNP cells for our disease groups.
+The percents represent the percent of each MNP cell subcluster as a function of all MNP cells.
+
+
+```{r perc_boxplots, fig.width = 12, fig.height = 6}
+plot_df <- mnp_counts %>%
+  group_by(id, sample) %>%
+  mutate(total_cells = sum(n_cells)) %>%
+  mutate(percent = n_cells / total_cells * 100)
+
+
+order <- plot_df %>%
+  group_by(annotation) %>%
+  summarise(n_total = sum(n_cells)) %>%
+  arrange(desc(n_total)) %>%
+  .$annotation
+
+plot_df$annotation <- factor(plot_df$annotation, levels = order)
+
+plot_df$sample <- as.character(plot_df$sample)
+plot_df <- plot_df[plot_df$sample != "Dil",]
+plot_df$sample <- factor(plot_df$sample, levels = c("Bln", "Ag"))
+plot_df$phenotype <- factor(plot_df$phenotype, levels = c("AC", "AA"))
+
+ggplot(plot_df, aes(x = annotation, y = percent, fill = phenotype)) +
+        geom_boxplot() +
+        scale_fill_manual(values = c("#40007F", "#FF8000")) +
+        scale_y_log10() +
+        annotation_logticks(side = "l") +
+        facet_wrap(~sample) +
+        ylab("Percent of MNP cells") +
+        xlab("cluster") +
+        theme_classic(base_size = 20) +
+        theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+```
+
+```{r n_cells, fig.width = 12, fig.height = 6}
+ggplot(plot_df, aes(x = annotation, y = n_cells, fill = phenotype)) +
+        geom_boxplot() +
+        scale_fill_manual(values = c("#40007F", "#FF8000")) +
+        scale_y_log10() +
+        annotation_logticks(side = "l") +
+        facet_wrap(~sample) +
+        ylab("Number of MNP cells") +
+        xlab("cluster") +
+        theme_classic(base_size = 20) +
+        theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+```
 
 Next we wanted to evaluate which clusters were associated with particular group:condition combinations.  First, we can
 do this in a qualitative way, looking at the UMAP embedding density of the cells that are in our different categorical
@@ -658,6 +775,9 @@ dens_plot
 ```
 
 
+
+
+
 To look at the data in a more quantitative way, we used a mixed-effects association logistic regression model similar
 to that described by Fonseka et al.  We fit a logistic regression modelfor each cell cluster. Each cluster was modelled
 independently as follows :
@@ -667,11 +787,9 @@ The least-squares means of the factors in the model were calculated and all pair
 groups at each condition (e.g. AA vs AC within baseline, AA vs AC within allergen, etc.) were compared.  The OR with
 confidence interval for each sample/condition combination were plotted.
 
-```{python cell_info}
-cell_info = mnp_harmonized.obs
-```
 
-```{r diff_abund, warning = FALSE, message = FALSE}
+
+```{r diff_abund, warning = FALSE, message = FALSE, fig.height = 5, fig.width = 8}
 library(lme4)
 library(ggplot2)
 library(emmeans)
@@ -725,67 +843,6 @@ get_abund_info <- function(dataset, cluster, contrast, random_effects = NULL, fi
   return(cluster_models)
 }
 
-# A function to make a forest plot for the differential abundance analyses
-plot_contrasts <- function(d, x_breaks_by = 1, wrap_ncol = 6, y_ord = FALSE) {
-  # if (y_ord != FALSE){
-  #   d$cluster <- factor(d$cluster, levels = y_ord)
-  # }
-  ggplot() +
-    annotate(
-      geom = "rect",
-      xmin = -Inf,
-      xmax = Inf,
-      ymin = seq(from = 1, to = length(unique(d$cluster)), by = 2) - 0.5,
-      ymax = seq(from = 1, to = length(unique(d$cluster)), by = 2) + 0.5,
-      alpha = 0.2
-    ) +
-    geom_vline(xintercept = 0, size = 0.2) +
-    geom_errorbarh(
-      data = d,
-      mapping = aes(
-        xmin = asymp.LCL, xmax = asymp.UCL, y = cluster,
-        color = sig
-      ),
-      height = 0
-    ) +
-    geom_point(
-      data = d,
-      mapping = aes(
-        x = estimate, y = cluster,
-        color = sig
-      ),
-      size = 3
-    ) +
-    scale_color_manual(
-      name = "P < 0.05",
-      values = c("#FF8000", "#40007F", "grey60"),
-      breaks = c("AA", "ANA")
-    ) +
-    scale_x_continuous(
-      breaks = log(c(0.125, 0.5, 1, 2, 4)),
-      labels = function(x) exp(x)
-    ) +
-    scale_y_discrete(
-      # expand = c(0, 0),
-      # breaks = seq(1, length(unique(d$cluster))),
-      labels = levels(plot_df$cluster),
-    ) +
-    # annotation_logticks(sides = "b") +
-    expand_limits(y = c(0.5, length(unique(d$cluster)) + 0.5)) +
-    # facet_grid(~ GeneName) +
-    facet_wrap(~ sample, ncol = wrap_ncol) +
-    theme_classic() +
-    theme(
-      strip.text = element_text(face = "italic"),
-      text = element_text(size = 15)
-    ) +
-    labs(
-      title = "contrasts by sample",
-      x = "Odds Ratio",
-      y = "cluster"
-    )
-}
-
 clust_df <- reticulate::py$cell_info
 
 abund_info <- get_abund_info(clust_df, cluster = clust_df$new_clusters,
@@ -794,13 +851,49 @@ abund_info <- get_abund_info(clust_df, cluster = clust_df$new_clusters,
                             fixed_effects = c("sample", "phenotype"))
 
 plot_df <- do.call(rbind, abund_info)
-plot_df$direction <- ifelse(plot_df$estimate > 0, "AA", "ANA")
+plot_df$direction <- ifelse(plot_df$estimate > 0, "AA", "AC")
 
 plot_df$cluster <- as.numeric(gsub("cluster", "", plot_df$cluster))
 plot_df$sig <- ifelse(plot_df$p.value < 0.05, plot_df$direction, "non_sig")
-cl_order <- c(11, 5, 6, 7, 13, 2, 14, 1, 8, 4, 9, 10, 3, 12)
-plot_df$cluster <- factor(plot_df$cluster, levels = rev(cl_order))
-plot_df$sample <- factor(plot_df$sample, levels = c("Pre", "Dil", "Ag"))
-plot_contrasts(plot_df)
+plot_df$sample <- factor(plot_df$sample, levels = c("Bln", "Dil", "Ag"))
+
+
+annotations = c("1" = "MC1 (CXCL10)",
+                   "2" = "MC2 (SPP1)",
+                   "3" = "MC3 (AREG)",
+                   "4" = "Mac1 (FABP4)",
+                   "5" = "quiesMac",
+                   "6" = "quiesMC",
+                   "7" = "Cycling (PCLAF)",
+                   "8" = "MC4 (CCR2)",
+                   "9" = "Mac2 (A2M)",
+                   "10" = "pDC (TCF4)",
+                   "11" = "migDC (CCR7)",
+                   "12" = "DC1 (CLEC9A)",
+                   "13" = "DC2 (CD1C)",
+                   "14" = "AS DC (AXL)")
+
+plot_df$annotation <- sapply(plot_df$cluster, function(x) annotations[as.character(x)])
+plot_df$annotation <- factor(plot_df$annotation, levels = rev(unlist(annotations, use.names = FALSE)))
+
+
+ggplot(plot_df[plot_df$sample != "Dil",], aes(x = estimate, y = annotation, color = sig)) +
+  geom_point(size = 3) +
+  geom_errorbarh(mapping = aes(xmin = asymp.LCL, xmax = asymp.UCL, y = annotation, color = sig),
+                 height = 0) +
+  geom_vline(xintercept = 0, size = 0.2) +
+  scale_color_manual(
+      name = "P < 0.05",
+      values = c("#FF8000", "#40007F", "grey60"),
+      breaks = c("AA", "AC")
+    ) +
+    scale_x_continuous(
+      breaks = log(c(0.125, 0.5, 1, 2, 4)),
+      labels = function(x) exp(x)
+    ) +
+    # scale_y_discrete(labels = levels(plot_df$cluster)) +
+  xlab("Odds Ratio") +
+  facet_wrap(~sample) +
+  theme_classic(base_size = 20)
 
 ```
