@@ -695,7 +695,7 @@ all other Th subsets, Th17 vs. all other subsets etc.  We see the same patterns 
 giving us confidence in our annotations.
 
 ```{r cano_gsea, warning = FALSE, message = FALSE, fig.height = 8, fig.width = 10}
-# library(DESeq2)
+library(DESeq2)
 #
 # meta_data <- read.csv("/home/nealpsmith/projects/medoff/cano_bulk/data/NCOMMS-19-7936188_bulk_RNAseq_metadata.txt", sep = "\t",
 #                       row.names = 2)
@@ -998,6 +998,55 @@ ggplot(plot_df, aes(x = sample, fill = annotation, y = perc_cells)) + geom_bar(s
 
 ```
 
+Below, we are looking at the distributions of percents and total number of T cells for our disease groups. The percents
+represent the percent of each AEC subcluster as a function of all AECs.
+
+```{r perc_boxplots, fig.width = 12, fig.height = 6}
+plot_df <- t_cell_counts %>%
+  group_by(id, sample) %>%
+  mutate(total_cells = sum(n_cells)) %>%
+  mutate(percent = n_cells / total_cells * 100)
+
+
+order <- plot_df %>%
+  group_by(annotation) %>%
+  summarise(n_total = sum(n_cells)) %>%
+  arrange(desc(n_total)) %>%
+  .$annotation
+
+plot_df$annotation <- factor(plot_df$annotation, levels = order)
+
+plot_df$sample <- as.character(plot_df$sample)
+plot_df <- plot_df[plot_df$sample != "Dil",]
+plot_df$sample <- factor(plot_df$sample, levels = c("Bln", "Ag"))
+plot_df$phenotype <- factor(plot_df$phenotype, levels = c("AC", "AA"))
+
+ggplot(plot_df, aes(x = annotation, y = percent, fill = phenotype)) +
+        geom_boxplot() +
+        scale_fill_manual(values = c("#40007F", "#FF8000")) +
+        scale_y_log10() +
+        annotation_logticks(side = "l") +
+        facet_wrap(~sample) +
+        ylab("Percent of T cells") +
+        xlab("cluster") +
+        theme_classic(base_size = 20) +
+        theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+```
+
+```{r n_cells, fig.width = 12, fig.height = 6}
+ggplot(plot_df, aes(x = annotation, y = n_cells, fill = phenotype)) +
+        geom_boxplot() +
+        scale_fill_manual(values = c("#40007F", "#FF8000")) +
+        scale_y_log10() +
+        annotation_logticks(side = "l") +
+        facet_wrap(~sample) +
+        ylab("Number of T cells") +
+        xlab("cluster") +
+        theme_classic(base_size = 20) +
+        theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+```
+
+
 To determine which clusters were associated with particular group at a given condition, we used a mixed-effects
 association logistic regression model similar to that described by Fonseka et al.  We fit a logistic regression model
 for each cell cluster. Each cluster was modelled independently as follows :
@@ -1193,7 +1242,7 @@ ones that came out were interesting.  For example, in the Th2 cells, we see IL2R
 All significant genes we found were up-regulated in the AA.
 
 ```{r de_res, warning = FALSE, message = FALSE}
-# library(glue)
+library(glue)
 #
 # count_mtx <- as.matrix(read.csv("/home/nealpsmith/projects/medoff/data/pseudobulk_t_cell_harmonized_counts.csv", row.names = 1))
 # meta_data <- read.csv("/home/nealpsmith/projects/medoff/data/pseudobulk_t_cell_harmonized_meta.csv", row.names = 1)
@@ -1282,5 +1331,81 @@ To visualize these, we used violin plots comparing the AA and AC expression dist
 #
 # fig.tight_layout()
 # fig
+
+```
+
+
+
+```{r pre_vs_ag, warning = FALSE, message = FALSE}
+
+count_mtx <- as.matrix(read.csv(
+  "/home/nealpsmith/projects/medoff/data/pseudobulk_t_cell_harmonized_counts.csv",
+  row.names = 1))
+meta_data <- read.csv("/home/nealpsmith/projects/medoff/data/pseudobulk_t_cell_harmonized_meta.csv",
+                      row.names = 1)
+
+meta_data$phenotype <- as.character(meta_data$phenotype)
+meta_data$phenotype[meta_data$phenotype == "ANA"] <- "AC"
+meta_data$phenotype <- factor(meta_data$phenotype, levels = c("AC", "AA"))
+
+meta_data$sample <- as.character(meta_data$sample)
+meta_data$sample[meta_data$sample == "Pre"] <- "Bln"
+
+de_list <- list()
+for (clust in unique(meta_data$cluster)){
+  clust_meta <-meta_data[meta_data$cluster == clust,]
+  clust_count <- count_mtx[,rownames(clust_meta)]
+
+  # Lets do a comparison of groups at Pre and Ag
+  pheno_list <- list()
+  for (pheno in c("AA", "AC")){
+
+    # Get just the samples from that phenotype and only pre and Ag
+    meta_temp <- clust_meta[clust_meta$phenotype ==pheno & clust_meta$sample %in% c("Bln", "Ag"),]
+    meta_temp$sample <- factor(meta_temp$sample, levels = c("Bln", "Ag"))
+
+    if(nrow(meta_temp) > 5){
+      count_temp <- clust_count[,rownames(meta_temp)]
+
+      n_samp <- rowSums(count_temp != 0)
+      count_temp <- count_temp[n_samp > round(nrow(meta_temp) / 2),]
+
+      stopifnot(rownames(meta_temp) == colnames(count_temp))
+      dds <- DESeqDataSetFromMatrix(countData = count_temp,
+                                    colData = meta_temp,
+                                    design = ~sample)
+
+      dds <- DESeq(dds)
+      res <- results(dds)
+      plot_data <- as.data.frame(res)
+      plot_data <- plot_data[!is.na(plot_data$padj),]
+      plot_data$gene <- rownames(plot_data)
+      n_de <- nrow(plot_data[plot_data$padj < 0.1,])
+      pheno_list[[pheno]] <- n_de
+    } else {
+      pheno_list[[pheno]] <- 0
+    }
+
+  }
+  df <- as.data.frame(pheno_list)
+  df$leiden_labels <- clust
+  de_list[[clust]] <- df
+
+}
+
+de_counts <- do.call(rbind, de_list)
+de_counts <- de_counts[order(rowSums(de_counts), decreasing = FALSE),]
+
+de_counts$leiden_labels <- factor(rownames(de_counts), levels = rownames(de_counts))
+plot_df <- reshape2::melt(de_counts, id.vars = "leiden_labels") %>%
+  mutate(value = ifelse(variable == "AC", -value, value))
+
+ggplot(plot_df, aes(x = leiden_labels, y = value, group = variable, fill = variable)) +
+  geom_bar(stat = "identity") + coord_flip() +
+  scale_fill_manual(values = c("#FF8000", "#40007F")) +
+  scale_y_continuous(labels = abs) +
+  ggtitle(glue("Number of DE genes Pre vs. Ag")) +
+  ylab("# of DE genes") + xlab("") +
+  theme_bw(base_size = 20)
 
 ```
