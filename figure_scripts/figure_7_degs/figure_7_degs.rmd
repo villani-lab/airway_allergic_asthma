@@ -1,0 +1,78 @@
+---
+title: "Figure 7 : DEGs"
+output: html_document
+---
+
+In figure 7, we want to look at some DEGs on our global clustering to see what might've matched our luminex results
+
+```{r lineage_degs}
+library(tidyverse)
+library(ggplot2)
+library(glue)
+library(ggpubr)
+
+genes_oi <- c("CCL22", "CCL26", "MMP12", "TGFA", "TNFA", "CCL17", "IL1R2", "MMP9", "MMP13", "IL9", "LTA", "TNFSF14", "TNFSF10")
+
+# Look at these genes and see if they are DEGs on global clusters between AA and AC at Ag
+deg_info <- data.frame()
+deg_files <- list.files("/home/nealpsmith/projects/medoff/data/pseudobulk/lineage/pheno_by_samp")
+deg_files <- deg_files[grepl("Ag_by_pheno", deg_files)]
+
+for (f in deg_files){
+  df <- read.csv(glue("/home/nealpsmith/projects/medoff/data/pseudobulk/lineage/pheno_by_samp/{f}"), row.names = 1)
+  clust <- sub("de_cluster_", "", f)
+  clust <- sub("_Ag_by_pheno.csv", "", clust)
+  df$clust <- clust
+  deg_info <- rbind(deg_info, df)
+}
+
+sig_degs <- deg_info %>%
+  dplyr::filter(gene %in% genes_oi, clust %in% c("Epithelial.cells", "MNP")) %>%
+  write.csv("/home/nealpsmith/projects/medoff/data/pseudobulk/lineage/pheno_by_samp/bal_protein_genes.csv")
+
+overall_count_mtx <-read.csv("/home/nealpsmith/projects/medoff/data/pseudobulk_harmonized_data_counts.csv", row.names = 1)
+overall_meta_data <- read.csv("/home/nealpsmith/projects/medoff/data/pseudobulk_harmonized_data_meta.csv", row.names = 1)
+
+overall_log_norm <- apply(overall_count_mtx, 2, function(c){
+  n_total <- sum(c)
+  per_100k <- (c * 1000000) / n_total
+  return(per_100k)
+}) %>%
+  log1p(.)
+
+plot_list <- list()
+for (i in 1:nrow(sig_degs)){
+  g <- sig_degs[i, "gene"]
+  clust <- sig_degs[i, "clust"]
+  new_clust =  sub(".", " ", clust, fixed = TRUE)
+  pval <- signif(sig_degs[i, "pvalue"], digits = 2)
+
+  data_keep <- overall_meta_data[overall_meta_data$cluster == new_clust & overall_meta_data$sample == "Ag",]
+  keep_cols <- gsub(" ", ".", rownames(data_keep), fixed = TRUE)
+  g_exp <- overall_log_norm[g,keep_cols] %>%
+    as.data.frame() %>%
+    `colnames<-`(c(g)) %>%
+    rownames_to_column(var = "samp") %>%
+    mutate(samp = sub(".", " ", samp, fixed = TRUE)) %>%
+    left_join(overall_meta_data %>% rownames_to_column(var = "samp"), by = "samp")
+
+  g_exp$phenotype[g_exp$phenotype == "ANA"] <- "AC"
+  if (clust == "Epithelial.cells"){
+    plot_clust <- "AEC"
+  } else {
+    plot_clust <- clust
+  }
+  p <- ggplot(g_exp, aes_string(x = "phenotype", y = g, fill = "phenotype")) +
+    geom_boxplot(outlier.shape = NA, alpha = 0.5) +
+    geom_jitter(pch = 21, size = 3, width = 0.1, height = 0) +
+    scale_fill_manual(values = c("#FF8000", "#40007F")) +
+    ggtitle(glue("{g} in {plot_clust} ; p = {pval}")) +
+    theme_classic(base_size = 10)
+
+  plot_list <- c(plot_list, list(p))
+}
+
+ggarrange(plotlist = plot_list, common.legend = TRUE, ncol = 4, nrow = 5)
+
+```
+
