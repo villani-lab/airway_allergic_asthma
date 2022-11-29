@@ -1,6 +1,6 @@
 ---
 title: "Figure 7 : CellPhoneDB"
-output: rmarkdown::github_document
+output: html_document
 ---
 
 ```{r message=FALSE}
@@ -358,50 +358,6 @@ if (! file.exists("/home/nealpsmith/projects/medoff/data/cellphonedb/all_sig_int
 ```
 
 
-Next, we wanted to make a heatmap comparing the number of interactions that meet our criteria
-
-```{r cellphonedb_heatmap, warning = FALSE, message = FALSE, fig.width = 8, fig.height = 7}
-library(ComplexHeatmap)
-library(circlize)
-
-inter_count_df <- all_interactions_df %>%
-  group_by(cluster_pair, group) %>%
-  summarise(n_interactions = n())
-
-heatmap_df <- data.frame(matrix(nrow = length(cluster_names),
-                                ncol = length(cluster_names)),
-                         row.names = cluster_names) %>%
-  `colnames<-`(cluster_names)
-
-for (cl1 in rownames(heatmap_df)){
-  for (cl2 in colnames(heatmap_df)){
-    pair_info <- inter_count_df %>%
-      dplyr::filter(cluster_pair == glue("{cl1}.{cl2}"), group != "both")
-    if (nrow(pair_info) == 0){
-      heatmap_df[cl1, cl2] <- 0
-    } else if (!"AA" %in% pair_info$group){
-      heatmap_df[cl1, cl2] <- -pair_info$n_interactions
-    } else if (!"ANA" %in% pair_info$group){
-      heatmap_df[cl1, cl2] <- pair_info$n_interactions
-    } else {
-      diff <- pair_info$n_interactions[pair_info$group == "AA"] - pair_info$n_interactions[pair_info$group == "ANA"]
-      heatmap_df[cl1, cl2] <- diff
-    }
-  }
-}
-
-# Remove rows with all 0s
-heatmap_df <- heatmap_df[rowSums(heatmap_df) != 0,]
-heatmap_df <- heatmap_df[,colSums(heatmap_df) != 0]
-
-color_fun <-colorRamp2(c(-max(heatmap_df), 0, max(heatmap_df)), c("#40007F", "white",  "#FF8000"))
-clustering <- hclust(dist(heatmap_df), method = "ward.D2")
-
-hmap <- Heatmap(heatmap_df, col = color_fun, name = "Difference : AA - ANA", cluster_rows = clustering,
-                cluster_columns = clustering)
-draw(hmap)
-
-```
 
 Next, we wanted to focus in on some interactions of biological interest.  We curated a list specific to Th2 interactions.
 Given Th2 cells are predominantly found in the AA subjects, we displayed the significant ones for the AA only in a dot
