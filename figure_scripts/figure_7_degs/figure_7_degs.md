@@ -1,11 +1,9 @@
----
-title: "Figure 7 : DEGs"
-output: rmarkdown::github_document
----
+Figure 7 : DEGs
+================
 
 In figure 7, we want to look at some DEGs on our global clustering to see what might've matched our luminex results
 
-```{r lineage_degs, message = FALSE, warning = FALSE, fig.width = 11, fig.height = 8}
+``` r
 # library(tidyverse)
 library(dplyr)
 library(tibble)
@@ -82,17 +80,13 @@ for (i in 1:nrow(clust_gene_df)){
 }
 
 ggarrange(plotlist = plot_list, common.legend = TRUE, ncol = 3, nrow = 3)
-
 ```
 
+![](figure_7_degs_files/figure-markdown_github/lineage_degs-1.png)
 
-Lastly, we wanted to test our Basal cellphonedb interactions of interest with an alternative approach.  We wanted to
-test if the sum of receptor:ligand pairs were associated with AA or AC.  To do this, we used ```limma```.  There were a
-few that were significant between MC4 and Basal cells, which we show in supplemental figure 6.  Below, we are showing
-all of the MC4:Basal interactions
+Lastly, we wanted to test our Basal cellphonedb interactions of interest with an alternative approach. We wanted to test if the sum of receptor:ligand pairs were associated with AA or AC. To do this, we used `limma`. There were a few that were significant between MC4 and Basal cells, which we show in supplemental figure 6. Below, we are showing all of the MC4:Basal interactions
 
-```{r gene_gene_analysis, fig.width = 23, fig.height = 18, message = FALSE, warning = FALSE}
-
+``` r
 library(Matrix)
 library(stringr)
 library(data.table)
@@ -398,7 +392,6 @@ for (cl1 in epithelial_clusts){
       `colnames<-`(c("interacting_pair", "rank")) %>%
       mutate(clust_pair = glue("{cl1}.{cl2}"))
 
-
     all_info_ana <-list(spec_pvals_ana, spec_means_aa, spec_ranks_ana) %>%
       reduce(left_join, by = c("interacting_pair", "clust_pair")) %>%
       mutate(pheno = "ANA")
@@ -454,7 +447,6 @@ for (cl1 in epithelial_clusts){
       dplyr::filter(interacting_pair %in% epi_second_interactions) %>%
       `colnames<-`(c("interacting_pair", "rank")) %>%
       mutate(clust_pair = glue("{cl2}.{cl1}"))
-
 
     all_info_ana <-list(spec_pvals_ana, spec_means_aa, spec_ranks_ana) %>%
       reduce(left_join, by = c("interacting_pair", "clust_pair")) %>%
@@ -643,5 +635,6 @@ ncols = round(sqrt(length(plot_list))) + 1
 
 plots <- ggarrange(plotlist = plot_list, ncol = ncols, nrow = nrows, common.legend = TRUE)
 plots
-
 ```
+
+![](figure_7_degs_files/figure-markdown_github/gene_gene_analysis-1.png)
