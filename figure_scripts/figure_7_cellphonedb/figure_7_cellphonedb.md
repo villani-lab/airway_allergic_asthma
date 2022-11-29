@@ -19,7 +19,9 @@ cellphonedb method statistical_analysis meta_data.csv count_mtx.h5ad --output-pa
 cellphonedb method statistical_analysis meta_data.csv count_mtx.h5ad --output-path ana_ag_high_iter --result-precision 20 --iterations 10000 --threads 16
 </p>
 </pre>
-With the outputs, we next wanted to aggregate the significant interactions and compare what we see with AA and AC. One drawback of cellphonedb is that it does not have great type-I error control. Therefore, we set additional criteria when determining what interactions to consider significant. The criteria were as follows : -imperical p-value &lt;0.001 -receptor in &gt; 10% of receptor cells -receptor in &gt; 20 cells total -ligand in &gt; 10% of ligand cells -ligand in &gt; 20 total cells
+With the outputs, we next wanted to aggregate the significant interactions and compare what we see with AA and AC. One drawback of cellphonedb is that it does not have great type-I error control. Therefore, we set additional criteria when determining what interactions to consider significant. The criteria were as follows :
+
+-imperical p-value &lt;0.001 -receptor in &gt; 10% of receptor cells -receptor in &gt; 20 cells total -ligand in &gt; 10% of ligand cells -ligand in &gt; 20 total cells
 
 ``` r
 library(tidyverse)
@@ -347,51 +349,191 @@ if (! file.exists("/home/nealpsmith/projects/medoff/data/cellphonedb/all_sig_int
 }
 ```
 
-Next, we wanted to make a heatmap comparing the number of interactions that meet our criteria
+After aggregating the data, we wanted to see which interacting pairs were most specific to each group. Below we show the top 25 pairs for each disease group. We also show this as a circos diagram (figure 7A). This was done with Javascript (D3) and the code for that can be found in the "figure 7a" folder of the repository.
 
 ``` r
-library(ComplexHeatmap)
-library(circlize)
+expand.grid.unique <- function(x, y, include.equals=TRUE)
+{
+    x <- unique(x)
 
-inter_count_df <- all_interactions_df %>%
-  group_by(cluster_pair, group) %>%
-  summarise(n_interactions = n())
+    y <- unique(y)
 
-heatmap_df <- data.frame(matrix(nrow = length(cluster_names),
-                                ncol = length(cluster_names)),
-                         row.names = cluster_names) %>%
-  `colnames<-`(cluster_names)
+    g <- function(i)
+    {
+        z <- setdiff(y, x[seq_len(i-include.equals)])
 
-for (cl1 in rownames(heatmap_df)){
-  for (cl2 in colnames(heatmap_df)){
-    pair_info <- inter_count_df %>%
-      dplyr::filter(cluster_pair == glue("{cl1}.{cl2}"), group != "both")
-    if (nrow(pair_info) == 0){
-      heatmap_df[cl1, cl2] <- 0
-    } else if (!"AA" %in% pair_info$group){
-      heatmap_df[cl1, cl2] <- -pair_info$n_interactions
-    } else if (!"ANA" %in% pair_info$group){
-      heatmap_df[cl1, cl2] <- pair_info$n_interactions
-    } else {
-      diff <- pair_info$n_interactions[pair_info$group == "AA"] - pair_info$n_interactions[pair_info$group == "ANA"]
-      heatmap_df[cl1, cl2] <- diff
+        if(length(z)) cbind(x[i], z, deparse.level=0)
     }
-  }
+
+    do.call(rbind, lapply(seq_along(x), g))
 }
 
-# Remove rows with all 0s
-heatmap_df <- heatmap_df[rowSums(heatmap_df) != 0,]
-heatmap_df <- heatmap_df[,colSums(heatmap_df) != 0]
+unique_pairs <- expand.grid.unique(cluster_names, cluster_names) %>%
+  as.data.frame() %>%
+  `colnames<-`(c("clust_1", "clust_2"))
 
-color_fun <-colorRamp2(c(-max(heatmap_df), 0, max(heatmap_df)), c("#40007F", "white",  "#FF8000"))
-clustering <- hclust(dist(heatmap_df), method = "ward.D2")
+if (! file.exists("/home/nealpsmith/projects/medoff/data/cellphonedb/n_sig_interactions_by_group_clust_pair_one_way.csv")){
+  inter_count_df_oneway <- apply(unique_pairs, 1, function(df){
+    cl1 = df[["clust_1"]]
+    cl2 = df[["clust_2"]]
+    pair_data <- inter_count_df %>%
+        dplyr::filter(cluster_pair %in% c(glue("{cl1}.{cl2}"), glue("{cl2}.{cl1}")))
+      aa_count <- sum(pair_data[pair_data$group == "AA",]$n_interactions)
+      ana_count <- sum(pair_data[pair_data$group == "ANA",]$n_interactions)
+      both_count <- sum(pair_data[pair_data$group == "both",]$n_interactions)
 
-hmap <- Heatmap(heatmap_df, col = color_fun, name = "Difference : AA - ANA", cluster_rows = clustering,
-                cluster_columns = clustering)
-draw(hmap)
+    df <- data.frame(cluster_pair = rep(glue("{cl1}.{cl2}"), 3),
+                 group = c("AA", "ANA", "both"),
+                 n_interactions = c(aa_count, ana_count, both_count))
+    return(df)
+  }) %>%
+    do.call(rbind, .)
+
+  inter_count_df_oneway$interaction_type <- sapply(inter_count_df_oneway$cluster_pair, function(x){
+    cl1 <- strsplit(x, "\\.")[[1]][1]
+    cl2 <- strsplit(x, "\\.")[[1]][2]
+
+    cl1_lin <- strsplit(cl1, "_")[[1]][1]
+    cl2_lin <- strsplit(cl2, "_")[[1]][1]
+
+    if (length(unique(c(cl1_lin, cl2_lin))) > 1){
+      return("2_lin")
+    } else {
+      return("1_lin")
+    }
+
+  })
+
+  write.csv(inter_count_df_oneway, "/home/nealpsmith/projects/medoff/data/cellphonedb/n_sig_interactions_by_group_clust_pair_one_way.csv")
+} else {
+  inter_count_df_oneway <- read.csv("/home/nealpsmith/projects/medoff/data/cellphonedb/n_sig_interactions_by_group_clust_pair_one_way.csv",
+                                    row.names = 1)
+}
+
+# Now get the ones with the largest differential
+top_aa_specific_oneway <- inter_count_df_oneway %>%
+  dplyr::filter(group != "both", interaction_type == "2_lin") %>%
+  dplyr::select(-interaction_type) %>%
+  reshape2::dcast(cluster_pair ~ group) %>%
+  replace_na(list(AA = 0, ANA = 0)) %>%
+  mutate(diff = AA - ANA) %>%
+  arrange(by = desc(diff)) %>%
+  .[1:25,] %>%
+  .$cluster_pair
 ```
 
-![](figure_7_cellphonedb_files/figure-markdown_github/cellphonedb_heatmap-1.png)
+    ## Using n_interactions as value column: use value.var to override.
+
+``` r
+# Now get the ones with the largest differential
+top_ana_specific_oneway <- inter_count_df_oneway %>%
+  dplyr::filter(group != "both", interaction_type == "2_lin") %>%
+  dplyr::select(-interaction_type) %>%
+  reshape2::dcast(cluster_pair ~ group) %>%
+  replace_na(list(AA = 0, ANA = 0)) %>%
+  mutate(diff = AA - ANA) %>%
+  arrange(by = diff) %>%
+  .[1:25,] %>%
+  .$cluster_pair
+```
+
+    ## Using n_interactions as value column: use value.var to override.
+
+``` r
+all_pairs_for_plot <- c(top_aa_specific_oneway, top_ana_specific_oneway)
+
+plot_df = inter_count_df_oneway[inter_count_df_oneway$cluster_pair %in% all_pairs_for_plot,]
+plot_df <- plot_df %>%
+  dplyr::filter(group != "both")
+plot_df %<>%
+  dplyr::mutate(value = ifelse(group == "ANA", -n_interactions, n_interactions))
+
+# Need to add annotations
+annotations <- c("tcell_7" = "CD8 T (GZMK)",
+                 "tcell_3" = "quiesCD8 T ",
+                 "tcell_1" = "CD8 T (CLIC3)",
+                 "tcell_5" = "Tgd (TRDC)",
+                 "tcell_9" = "CD8 T (EGR2)",
+                 "tcell_6" = "CD4 Treg (FOXP3)",
+                 "tcell_8" = "CD4 Th2 (GATA3)",
+                 "tcell_10" = "CD4 ThIFNR (ISG15)",
+                 "tcell_2" = "CD4 T (CD40LG)",
+                 "tcell_4" = "CD4 Th17 (RORA)",
+                 "myeloid_11" = "MC1 (CXCL10)",
+                 "myeloid_5" = "MC2 (SPP1)",
+                 "myeloid_6" = "MC3 (AREG)",
+                 "myeloid_7" = "Mac (FABP4)",
+                 "myeloid_13" = "quiesMac",
+                 "myeloid_2" = "quiesMC",
+                 "myeloid_14" = "Cycling (PCLAF)",
+                 "myeloid_1" = "MC4 (CCR2)",
+                 "myeloid_8" = "Mac2 (A2M)",
+                 "myeloid_4" = "pDC (TCF4)",
+                 "myeloid_9" = "migDC (CCR7)",
+                 "myeloid_10" = "DC1 (CLEC9A)",
+                 "myeloid_3" = "DC2 (CD1C)",
+                 "myeloid_12" = "AS DC (AXL)",
+                 "epithelial_11" = "Early ciliated",
+                 "epithelial_2" = "Ciliated",
+                 "epithelial_8" = "Mucous-ciliated",
+                 "epithelial_9" = "Hillock",
+                 "epithelial_12" = "Deuterosomal",
+                 "epithelial_10" = "Cycling basal",
+                 "epithelial_5" = "Basal",
+                 "epithelial_3" = "Suprabasal",
+                 "epithelial_6" = "quiesBasal",
+                 "epithelial_13" = "Ionocyte",
+                 "epithelial_4" = "Goblet",
+                 "epithelial_1" = "quiesGoblet",
+                 "epithelial_7" = "Club",
+                 "epithelial_14" = "Serous",
+                 "NK_cell" = "NK cell",
+                 "B_cells" = "B cells",
+                 "mast_cells" = "mast cells")
+
+plot_df$annotations <- sapply(as.character(plot_df$cluster_pair), function(x){
+  c1 <- annotations[strsplit(x, ".", fixed = TRUE)[[1]][1]]
+  c2 <- annotations[strsplit(x, ".", fixed = TRUE)[[1]][2]]
+  return(glue("{c1}.{c2}"))
+})
+
+annot_order_aa <- plot_df %>%
+  dplyr::select(annotations, group, n_interactions) %>%
+  group_by(annotations) %>%
+  dplyr::mutate(diff = lag(n_interactions) - n_interactions) %>%
+  drop_na() %>%
+  dplyr::filter(diff > 0) %>%
+  dplyr::select(annotations, diff) %>%
+  dplyr::arrange(by = diff) %>%
+  .$annotations %>%
+  as.character()
+
+annot_order_ac <- plot_df %>%
+  dplyr::select(annotations, group, n_interactions) %>%
+  group_by(annotations) %>%
+  dplyr::mutate(diff = lag(n_interactions) - n_interactions) %>%
+  drop_na() %>%
+  dplyr::filter(diff < 0) %>%
+  dplyr::select(annotations, diff) %>%
+  dplyr::arrange(by = diff) %>%
+  .$annotations %>%
+  as.character()
+
+plot_df$annotations <- factor(plot_df$annotations, levels = c(annot_order_ac, annot_order_aa))
+
+# Fix old nomenclature
+plot_df$group <- as.character(plot_df$group)
+plot_df$group[plot_df$group == "ANA"] <- "AC"
+
+ggplot(plot_df, aes(x = annotations, y = value, group = group, fill = group)) +
+  geom_bar(stat = "identity") + coord_flip() +
+  theme_classic(base_size = 20) +
+  scale_y_continuous(labels = abs) +
+  scale_fill_manual(values = c("#FF8000", "#40007F")) +
+  ylab("# unique interactions")
+```
+
+![](figure_7_cellphonedb_files/figure-markdown_github/side_by_side_bar-1.png)
 
 Next, we wanted to focus in on some interactions of biological interest. We curated a list specific to Th2 interactions. Given Th2 cells are predominantly found in the AA subjects, we displayed the significant ones for the AA only in a dot plot. A large point means it meets our statistical criteria listed at the top. The rank is a value produced by CellPhoneDB and represents how specific an interaction is to given clusters. The more cluster pairs an interaction is found to be significant, the lower the rank. We took the -log10(rank) such that darker points represent interactions that were found in less cluster pairs.
 
@@ -576,13 +718,21 @@ pval_df$interacting_pair <- factor(pval_df$interacting_pair, levels = rev(row_or
 # Want to just do AA for now
 plot_df_aa <- pval_df[pval_df$pheno == "AA",]
 
+# Add annotations
+plot_df_aa$annotations <- sapply(as.character(plot_df_aa$clust_pair), function(x){
+  c1 <- annotations[strsplit(x, ".", fixed = TRUE)[[1]][1]]
+  c2 <- annotations[strsplit(x, ".", fixed = TRUE)[[1]][2]]
+  return(glue("{c1}.{c2}"))
+})
+
 # Want to order the columns in a specific way
-col_order <- c("tcell_8.epithelial_3", "tcell_8.epithelial_5", "tcell_8.epithelial_7","tcell_8.epithelial_1",
-               "tcell_8.epithelial_4", "tcell_8.myeloid_11", "tcell_8.myeloid_6", "tcell_8.myeloid_5", "tcell_8.myeloid_1",
-               "tcell_8.myeloid_3", "tcell_8.myeloid_8", "tcell_8.myeloid_12")
-plot_df_aa$clust_pair <- factor(plot_df_aa$clust_pair, levels = col_order)
-# plot_df_aa$interacting_pair <- factor(plot_df_aa$interacting_pair, levels = levels)
-ggplot(plot_df_aa, aes(x = clust_pair, y = interacting_pair, size = neglogp, color = neglogrank)) +
+col_order <- c("CD4 Th2 (GATA3).Suprabasal", "CD4 Th2 (GATA3).Basal", "CD4 Th2 (GATA3).Club",
+               "CD4 Th2 (GATA3).quiesGoblet", "CD4 Th2 (GATA3).Goblet", "CD4 Th2 (GATA3).MC1 (CXCL10)",
+               "CD4 Th2 (GATA3).MC2 (SPP1)", "CD4 Th2 (GATA3).MC3 (AREG)", "CD4 Th2 (GATA3).MC4 (CCR2)",
+               "CD4 Th2 (GATA3).DC2 (CD1C)", "CD4 Th2 (GATA3).Mac2 (A2M)", "CD4 Th2 (GATA3).AS DC (AXL)")
+plot_df_aa$annotations <- factor(plot_df_aa$annotations, levels = col_order)
+
+ggplot(plot_df_aa, aes(x = annotations, y = interacting_pair, size = neglogp, color = neglogrank)) +
   geom_point() +
   scale_size_continuous(name = "-log10(p-value)") +
   scale_color_continuous(low = "#d3d3d3", high = "#FF8000", limits = c(0, 2.2), name = "-log10(rank)") +
@@ -595,7 +745,7 @@ ggplot(plot_df_aa, aes(x = clust_pair, y = interacting_pair, size = neglogp, col
 We can also visualize it where the color represents the mean of the receptor:ligand pair (calculated by cellphonedb)
 
 ``` r
-ggplot(plot_df_aa, aes(x = clust_pair, y = interacting_pair, size = neglogp, color = mean)) +
+ggplot(plot_df_aa, aes(x = annotations, y = interacting_pair, size = neglogp, color = mean)) +
   geom_point() +
   scale_size_continuous(name = "-log10(p-value)") +
   scale_color_continuous(low = "#d3d3d3", high = "#FF8000", limits = c(0, max(pval_df$mean))) +
@@ -610,7 +760,7 @@ Next, we wanted to look at some interactions between basal and myeloid cells. Ou
 ``` r
 epi_myl_interact_info <- read.csv("/home/nealpsmith/projects/medoff/data/cellphonedb/basal_myl_interactions_for_dotplot_v4.csv")
 epithelial_clusts <- c("epithelial_5")
-myeloid_clusts <- c("myeloid_1", "myeloid_3", "myeloid_5", "myeloid_6", "myeloid_8", "myeloid_11", "myeloid_12")
+myeloid_clusts <- c("myeloid_1", "myeloid_3", "myeloid_5", "myeloid_6", "myeloid_8", "myeloid_11")
 
 
 epi_first_interactions <- epi_myl_interact_info$interaction[grep("epithelial_+", epi_myl_interact_info$pair)]
@@ -771,12 +921,6 @@ pval_df$clust_pair[grep("[myeloid]_[0-9]+.epithelial", pval_df$clust_pair)] <-
     new_pair <- paste(clusts[2], clusts[1], sep = ".")
   })
 
-# row_order <- c("F11R_aLb2 complex", "ANXA1_FPR1", "ANXA1_FPR2", "ANXA1_FPR3", "CD55_ADGRE5",
-#                "IL1 receptor_IL1B", "IL1 receptor inhibitor_IL1B", "OSMR_OSM",
-#                "WNT5A_FZD1", "WNT5A_FZD2", "FZD6_WNT5A", "FZD5_WNT5A",
-#                "aVb6 complex_TGFB1", "TGFbeta receptor1_TGFB1","TGFB2_TGFbeta receptor2",
-#                "EGFR_TGFA", "EGFR_AREG", "EGFR_HBEGF", "TNFSF10_TNFRSF10A", "TNFSF10_TNFRSF10B",
-#                "TNFSF10_TNFRSF10C", "TNFSF10_TNFRSF10D")
 row_order <- c("F11R_aLb2 complex", "ANXA1_FPR1", "ANXA1_FPR2", "ANXA1_FPR3", "CD55_ADGRE5",
                "TNFSF10_TNFRSF10A", "TNFSF10_TNFRSF10B", "SAA1_FPR2", "IL1 receptor_IL1B",
                "IL1 receptor inhibitor_IL1B", "OSMR_OSM", "WNT5A_FZD1", "WNT5A_FZD2", "FZD6_WNT5A",
@@ -785,20 +929,23 @@ row_order <- c("F11R_aLb2 complex", "ANXA1_FPR1", "ANXA1_FPR2", "ANXA1_FPR3", "C
 
 
 pval_df$interacting_pair <- factor(pval_df$interacting_pair, levels = rev(row_order))
-# Want to just do AA for now
-plot_df_aa <- pval_df[pval_df$pheno == "AA",]
 
-# Want to order the columns in a specific way
-col_order <- c("epithelial_5.myeloid_11", "epithelial_5.myeloid_6", "epithelial_5.myeloid_5",
-               "epithelial_5.myeloid_1", "epithelial_5.myeloid_3", "epithelial_5.myeloid_8",
-               "epithelial_5.myeloid_12")
-pval_df$clust_pair <- factor(pval_df$clust_pair, levels = col_order)
-# plot_df_aa$clust_pair <- factor(plot_df_aa$clust_pair, levels = col_order)
 
 # Lets make the plots facetted, and by major cell type
 basal_df <- pval_df[grep("epithelial_[35]", pval_df$clust_pair),]
 
-basal_df$group <- factor(basal_df$group, levels = c("Wnt signaling", "TGFb family", "Leukocyte adhesion", "cytokine", "EGFR signaling", "TNFSF10 signaling"))
+basal_df$annotations <- sapply(as.character(basal_df$clust_pair), function(x){
+  c1 <- annotations[strsplit(x, ".", fixed = TRUE)[[1]][1]]
+  c2 <- annotations[strsplit(x, ".", fixed = TRUE)[[1]][2]]
+  return(glue("{c1}.{c2}"))
+})
+
+col_order <- c("Basal.MC1 (CXCL10)", "Basal.MC2 (SPP1)", "Basal.MC3 (AREG)", "Basal.MC4 (CCR2)",
+               "Basal.DC2 (CD1C)", "Basal.Mac2 (A2M)")
+basal_df$annotations <- factor(basal_df$annotations, levels = col_order)
+
+basal_df$group <- factor(basal_df$group, levels = c("Wnt signaling", "TGFb family", "Leukocyte adhesion", "cytokine",
+                                                    "EGFR signaling", "TNFSF10 signaling"))
 
 plot_list <- lapply(c("AA", "ANA"), function(pheno){
   if (pheno == "AA"){
@@ -806,11 +953,18 @@ plot_list <- lapply(c("AA", "ANA"), function(pheno){
   } else {
     high_val <- "#40007F"
   }
+  if (pheno == "ANA") {
+    plot_pheno <- "AC"
+  } else {
+    plot_pheno <- "AA"
+  }
 # Want to make a faceted one
-  facet_plot <- ggplot(basal_df[basal_df$pheno == pheno,], aes(x = clust_pair, y = interacting_pair, size = neglogp, color = neglogrank)) +
+  facet_plot <- ggplot(basal_df[basal_df$pheno == pheno,], aes(x = annotations, y = interacting_pair, size = neglogp,
+                                                               color = neglogrank)) +
     geom_point() +
     scale_size_continuous(name = "-log10(p-value)") +
     scale_color_continuous(low = "#d3d3d3", high = high_val, limits = c(0, 2.5), name = "-log10(rank)") +
+          ggtitle(glue("Basal interactions : {plot_pheno}")) +
     # facet_wrap(~group + pheno, scales = "free_y", ncol = 1) +
     theme_classic(base_size = 20) +
     theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
@@ -841,7 +995,7 @@ We were also interested in some of these interactions with the goblet cells. Her
 ``` r
 epi_myl_interact_info <- read.csv("/home/nealpsmith/projects/medoff/data/cellphonedb/goblet_myl_interactions_for_dotplot.csv")
 epithelial_clusts <- c("epithelial_4")
-myeloid_clusts <- c("myeloid_1", "myeloid_3", "myeloid_5", "myeloid_6", "myeloid_8", "myeloid_11", "myeloid_12")
+myeloid_clusts <- c("myeloid_1", "myeloid_3", "myeloid_5", "myeloid_6", "myeloid_8", "myeloid_11")
 
 
 epi_first_interactions <- epi_myl_interact_info$interaction[grep("epithelial_+", epi_myl_interact_info$pair)]
@@ -1002,12 +1156,7 @@ pval_df$clust_pair[grep("[myeloid]_[0-9]+.epithelial", pval_df$clust_pair)] <-
     new_pair <- paste(clusts[2], clusts[1], sep = ".")
   })
 
-# row_order <- c("F11R_aLb2 complex", "ANXA1_FPR1", "ANXA1_FPR2", "ANXA1_FPR3", "CD55_ADGRE5",
-#                "IL1 receptor_IL1B", "IL1 receptor inhibitor_IL1B", "OSMR_OSM",
-#                "WNT5A_FZD1", "WNT5A_FZD2", "FZD6_WNT5A", "FZD5_WNT5A",
-#                "aVb6 complex_TGFB1", "TGFbeta receptor1_TGFB1","TGFB2_TGFbeta receptor2",
-#                "EGFR_TGFA", "EGFR_AREG", "EGFR_HBEGF", "TNFSF10_TNFRSF10A", "TNFSF10_TNFRSF10B",
-#                "TNFSF10_TNFRSF10C", "TNFSF10_TNFRSF10D")
+
 row_order <- c("F11R_aLb2 complex", "ANXA1_FPR1", "ANXA1_FPR2", "ANXA1_FPR3", "CD55_ADGRE5",
                "TNFSF10_TNFRSF10A", "TNFSF10_TNFRSF10B", "SAA1_FPR2", "IL1 receptor_IL1B",
                "IL1 receptor inhibitor_IL1B", "OSMR_OSM", "WNT5A_FZD1", "WNT5A_FZD2", "FZD6_WNT5A",
@@ -1016,18 +1165,20 @@ row_order <- c("F11R_aLb2 complex", "ANXA1_FPR1", "ANXA1_FPR2", "ANXA1_FPR3", "C
 
 
 pval_df$interacting_pair <- factor(pval_df$interacting_pair, levels = rev(row_order))
-# Want to just do AA for now
-plot_df_aa <- pval_df[pval_df$pheno == "AA",]
-
-# Want to order the columns in a specific way
-col_order <- c("epithelial_4.myeloid_11", "epithelial_4.myeloid_6", "epithelial_4.myeloid_5",
-               "epithelial_4.myeloid_1", "epithelial_4.myeloid_3", "epithelial_4.myeloid_8",
-               "epithelial_4.myeloid_12")
-pval_df$clust_pair <- factor(pval_df$clust_pair, levels = col_order)
-# plot_df_aa$clust_pair <- factor(plot_df_aa$clust_pair, levels = col_order)
 
 # Lets make the plots facetted, and by major cell type
 goblet_df <- pval_df[grep("epithelial_[14]", pval_df$clust_pair),]
+
+goblet_df$annotations <- sapply(as.character(goblet_df$clust_pair), function(x){
+  c1 <- annotations[strsplit(x, ".", fixed = TRUE)[[1]][1]]
+  c2 <- annotations[strsplit(x, ".", fixed = TRUE)[[1]][2]]
+  return(glue("{c1}.{c2}"))
+})
+
+# Want to order the columns in a specific way
+col_order <- c("Goblet.MC1 (CXCL10)", "Goblet.MC2 (SPP1)", "Goblet.MC3 (AREG)",
+               "Goblet.MC4 (CCR2)", "Goblet.DC2 (CD1C)", "Goblet.Mac2 (A2M)")
+goblet_df$annotations <- factor(goblet_df$annotations, levels = col_order)
 
 goblet_df$group <- factor(goblet_df$group, levels = c("Wnt signaling", "TGFb family", "Leukocyte adhesion", "cytokine", "EGFR signaling", "TNFSF10 signaling"))
 
@@ -1037,47 +1188,20 @@ plot_list <- lapply(c("AA", "ANA"), function(pheno){
   } else {
     high_val <- "#40007F"
   }
+
+  if (pheno == "ANA") {
+    plot_pheno <- "AC"
+  } else {
+    plot_pheno <- "AA"
+  }
+
 # Want to make a faceted one
-  facet_plot <- ggplot(goblet_df[goblet_df$pheno == pheno,], aes(x = clust_pair, y = interacting_pair, size = neglogp, color = neglogrank)) +
+  facet_plot <- ggplot(goblet_df[goblet_df$pheno == pheno,], aes(x = annotations, y = interacting_pair, size = neglogp,
+                                                                 color = neglogrank)) +
     geom_point() +
     scale_size_continuous(name = "-log10(p-value)") +
     scale_color_continuous(low = "#d3d3d3", high = high_val, limits = c(0, 2.5), name = "-log10(rank)") +
-    # facet_wrap(~group + pheno, scales = "free_y", ncol = 1) +
-    theme_classic(base_size = 20) +
-    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
-
-  # convert ggplot object to grob object
-  gp <- ggplotGrob(facet_plot)
-
-  # get gtable columns corresponding to the facets (5 & 9, in this case)
-  facet_rows <- gp$layout$t[grepl("panel", gp$layout$name)]
-
-  # get the number of unique x-axis values per facet (1 & 3, in this case)
-  y_var <- sapply(ggplot_build(facet_plot)$layout$panel_scales_y,
-                  function(l) length(l$range$range))
-
-  # change the relative widths of the facet columns based on
-  # how many unique x-axis values are in each facet
-  gp$heights[facet_rows] <- gp$heights[facet_rows] * y_var
-  return(gp)
-})
-combined_figure <- ggpubr::ggarrange(plotlist = plot_list, nrow = 1, widths = c(1.7, 1.7))
-
-ggsave("/home/nealpsmith/projects/medoff/figures/cellphonedb/strict_cutoff/dot_plots/goblet_myl_interactions_oi_goblet_facet_with_rank.pdf",
-       combined_figure, useDingbats = FALSE, width = 16, height = 8)
-
-plot_list <- lapply(c("AA", "ANA"), function(pheno){
-  if (pheno == "AA"){
-    high_val <- "#FF8000"
-  } else {
-    high_val <- "#40007F"
-  }
-# Want to make a faceted one
-  facet_plot <- ggplot(goblet_df[goblet_df$pheno == pheno,], aes(x = clust_pair, y = interacting_pair, size = neglogp, color = mean)) +
-    geom_point() +
-    scale_size_continuous(name = "-log10(p-value)") +
-    scale_color_continuous(low = "#d3d3d3", high = high_val, limits = c(0, 4), name = "mean") +
-    # facet_wrap(~group + pheno, scales = "free_y", ncol = 1) +
+          ggtitle(glue("Goblet interactions : {plot_pheno}")) +
     theme_classic(base_size = 20) +
     theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
 
@@ -1102,98 +1226,48 @@ combined_figure
 
 ![](figure_7_cellphonedb_files/figure-markdown_github/cellphonedb_goblet-1.png)
 
-One important thing to consider when performing CellPhoneDB is that it dosen't look at interactions on a per-donor basis. Therefore, we wanted to look at the expression of the ligands/receptors of interest on a per-donor basis to ensure signatures were not being driven by a single donor. Below are plots that show the % of myeloid cells that express the myeloid genes and % basal cells that express the basal genes. We can see that for the most part, results are consistent across subject groups.
+Again, we can show this where the point color is represented by the mean of the pair (calculated by cellphonedb)
 
-``` python
-import matplotlib.pyplot as plt
-from collections import Counter
-import pandas as pd
-import numpy as np
-import pegasus as pg
-import scanpy as sc
-import seaborn as sns
+``` r
+plot_list <- lapply(c("AA", "ANA"), function(pheno){
+  if (pheno == "AA"){
+    high_val <- "#FF8000"
+  } else {
+    high_val <- "#40007F"
+  }
 
-# Load in the myeloid data and T cell data
-myeloid_data = pg.read_input("/home/nealpsmith/projects/medoff/data/myeloid_harmonized.h5ad")
-t_cell_data = pg.read_input("/home/nealpsmith/projects/medoff/data/t_cell_harmonized.h5ad")
-epithelial_data = pg.read_input("/home/nealpsmith/projects/medoff/data/epithelial_harmonized.h5ad")
+  if (pheno == "ANA") {
+    plot_pheno <- "AC"
+  } else {
+    plot_pheno <- "AA"
+  }
+  # Want to make a faceted one
+  facet_plot <- ggplot(goblet_df[goblet_df$pheno == pheno,], aes(x = annotations, y = interacting_pair, size = neglogp,
+                                                                 color = mean)) +
+    geom_point() +
+    scale_size_continuous(name = "-log10(p-value)") +
+    scale_color_continuous(low = "#d3d3d3", high = high_val, limits = c(0, 4), name = "mean") +
+                    ggtitle(glue("Goblet interactions : {plot_pheno}")) +
+    theme_classic(base_size = 20) +
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
 
-myeloid_data.obs["comm_clust"] = ["_".join(["myeloid", clust]) for clust in myeloid_data.obs["new_clusters"]]
-t_cell_data.obs["comm_clust"] = ["_".join(["tcell", clust]) for clust in t_cell_data.obs["leiden_labels"]]
-epithelial_data.obs["comm_clust"] = ["_".join(["epithelial", clust]) for clust in epithelial_data.obs["new_clusters"]]
+  # convert ggplot object to grob object
+  gp <- ggplotGrob(facet_plot)
 
-myl_t_epi_data = myeloid_data.concatenate(t_cell_data, epithelial_data)
+  # get gtable columns corresponding to the facets (5 & 9, in this case)
+  facet_rows <- gp$layout$t[grepl("panel", gp$layout$name)]
 
-pairs_oi = pd.read_csv("/home/nealpsmith/projects/medoff/data/cellphonedb/interactions_for_percent_plots_basal_myl.csv")
-all_genes = set(pairs_oi["ligand"])
-all_genes.update(set(pairs_oi["receptor"]))
-all_genes = list(all_genes)
+  # get the number of unique x-axis values per facet (1 & 3, in this case)
+  y_var <- sapply(ggplot_build(facet_plot)$layout$panel_scales_y,
+                  function(l) length(l$range$range))
 
-# Lets filter the anndatas to get just the genes we need
-myl_t_epi_data = myl_t_epi_data[:,all_genes]
-
-clust_chan_dict = {}
-for clust in set(myl_t_epi_data.obs["comm_clust"]) :
-    clust_dict = {}
-    for chan in set(myl_t_epi_data.obs["Channel"]) :
-        data = myl_t_epi_data[(myl_t_epi_data.obs["comm_clust"] == clust) & (myl_t_epi_data.obs["Channel"] == chan)]
-        if len(data) == 0 :
-            continue
-        mtx = data.X.toarray()
-        percs = np.count_nonzero(mtx, axis = 0) / len(data) * 100
-        gene_dict = dict(zip(data.var_names, percs))
-        clust_dict[chan] = gene_dict
-    clust_chan_dict[clust] = clust_dict
-
-# Lets make one for groups of clusters
-myl_t_epi_data.obs["lineage"] = [n.split("_")[0] for n in myl_t_epi_data.obs["comm_clust"]]
-myl_t_epi_data.obs["lineage"] = ["myeloid_oi" if c in ["myeloid_1", "myeloid_3", "myeloid_5",
-                                                       "myeloid_6", "myeloid_8", "myeloid_11", "myeloid_12"]
-                                 else l for c, l in zip(myl_t_epi_data.obs["comm_clust"], myl_t_epi_data.obs["lineage"])]
-
-lin_chan_dict = {}
-for lin in set(myl_t_epi_data.obs["lineage"]):
-    lin_dict = {}
-    for chan in set(myl_t_epi_data.obs["Channel"]) :
-        data = myl_t_epi_data[(myl_t_epi_data.obs["lineage"] == lin) & (myl_t_epi_data.obs["Channel"] == chan)]
-        if len(data) == 0 :
-            continue
-        mtx = data.X.toarray()
-        percs = np.count_nonzero(mtx, axis = 0) / len(data) * 100
-        gene_dict = dict(zip(data.var_names, percs))
-        lin_dict[chan] = gene_dict
-    lin_chan_dict[lin] = lin_dict
-
-pairs = zip(pairs_oi["ligand"], pairs_oi["receptor"])
-
-nrows = int(round(np.sqrt(pairs_oi.shape[0])))
-fig, ax = plt.subplots(nrows = nrows, ncols = nrows + 1, figsize = (14, 12))
-ax = ax.ravel()
-for num, (lig, rec) in enumerate(pairs) :
-
-    lig_df = pd.DataFrame(clust_chan_dict["epithelial_5"]).T[[lig]]
-    rec_df = pd.DataFrame(lin_chan_dict["myeloid_oi"]).T[[rec]]
-
-    plot_df = lig_df.merge(rec_df, left_index = True, right_index = True)
-    plot_df["pheno"] = [n.split("_")[1] for n in plot_df.index]
-    plot_df["tmpt"] = [n.split("_")[2] for n in plot_df.index]
-    plot_df["color"] = ["#FF8000" if p == "AA" else "#40007F" for p in plot_df["pheno"]]
-
-    plot_df = plot_df[plot_df["tmpt"] == "Ag"]
-
-    ax[num].scatter(plot_df[rec], plot_df[lig], c = plot_df["color"])
-    # ax[num].set_xscale("log")
-    # ax[num].set_yscale("log")
-    ax[num].set_xlabel(rec)
-    ax[num].set_ylabel(lig)
-    ax[num].spines['right'].set_visible(False)
-    ax[num].spines['top'].set_visible(False)
-for noplot in range(num + 1, len(ax)) :
-    ax[noplot].axis("off")
-fig.tight_layout(rect=[0.12, 0.1, 1, 0.95])
-_ = fig.text(0.08, 0.5, '% myeloid cells', va='center', rotation='vertical', size = 20, fontweight = "bold")
-_ = fig.text(0.4, 0.08, '% Basal epithelium', va='center', size = 20, fontweight = "bold")
-fig
+  # change the relative widths of the facet columns based on
+  # how many unique x-axis values are in each facet
+  gp$heights[facet_rows] <- gp$heights[facet_rows] * y_var
+  return(gp)
+})
+combined_figure <- ggpubr::ggarrange(plotlist = plot_list, nrow = 1, widths = c(1.7, 1.7))
+combined_figure
 ```
 
-<img src="figure_7_cellphonedb_files/figure-markdown_github/cellphonedb_by_subj-1.png" width="1344" />
+![](figure_7_cellphonedb_files/figure-markdown_github/goblet_means-1.png)
