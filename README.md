@@ -56,8 +56,8 @@ This repository includes two folders:
 [figure_scripts/][figure_scripts]
 - The source code for creating the figures that appear in the manuscript.
 
-[deg_table]: https://github.com/villani-lab/ircolitis/tree/main/deg_table
-[figure_scripts]: https://github.com/villani-lab/ircolitis/tree/main/figure_scripts
+[deg_table]: https://github.com/villani-lab/airway_allergic_asthma/tree/main/deg_table
+[figure_scripts]: https://github.com/villani-lab/airway_allergic_asthma/tree/main/figure_scripts
 
 
 ## Download the data &#x1F4BE;
