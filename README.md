@@ -7,7 +7,7 @@ Welcome! Here, we present our study of allergic asthma in the human airway.
 
 Please read and cite our original research article:
 
-- CITATION
+- https://pubmed.ncbi.nlm.nih.gov/37146132/
 
 
 ## Explore the data :microscope: 
